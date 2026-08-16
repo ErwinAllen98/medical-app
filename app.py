@@ -8,7 +8,7 @@ st.set_page_config(page_title="Medical Flashcards", page_icon="🩺")
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("Gemini")
+    model = genai.GenerativeModel("gemini-1.5-flash")
 except Exception as e:
     st.error("🚨 Connection to Secrets failed! Did you save the key in the Secrets section?")
 
