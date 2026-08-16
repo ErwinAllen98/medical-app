@@ -1,17 +1,35 @@
 import streamlit as st
+import google.generativeai as genai
 
-# تنظیمات ظاهری صفحه
+# Page configuration
 st.set_page_config(page_title="Medical Flashcards", page_icon="🩺")
 
-st.title("🩺 دستیار هوشمند فلش‌کارت پزشکی")
-st.write("متن رفرنس یا گایدلاین خود را اینجا قرار دهید تا بر اساس اصل حداقل اطلاعات به کارت تبدیل شود.")
+# Attempt to retrieve the key from Secrets and configure the model
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+except Exception as e:
+    st.error("🚨 Connection to Secrets failed! Did you save the key in the Secrets section?")
 
-# ۱. کادر ورود متن توسط کاربر
-source_text = st.text_area("متن پزشکی (انگلیسی یا فارسی):", height=200)
+st.title("🩺 Smart Medical Flashcard Assistant")
+st.write("Paste your medical reference or guideline here to convert it into flashcards based on the Minimum Information Principle.")
 
-# ۲. دکمه برای شروع عملیات
-if st.button("ساخت فلش‌کارت‌ها"):
+source_text = st.text_area("Medical Text (English or Persian):", height=200)
+
+if st.button("Generate Flashcards"):
     if source_text:
-        st.info("به زودی پردازش متن در اینجا انجام می‌شود...")
+        with st.spinner("Processing text and generating cards... ⏳"):
+            # Prompt given to the AI
+            prompt = f"""
+            You are a medical education expert. Read the following text and convert it into short, individual flashcards based on the 'Minimum Information Principle'.
+            Provide the output strictly as a Markdown table with two columns (Column 1: Question, Column 2: Answer).
+            Text:
+            {source_text}
+            """
+            
+            # Send the prompt and get the response
+            response = model.generate_content(prompt)
+            st.markdown(response.text)
     else:
-        st.warning("لطفاً ابتدا یک متن پزشکی وارد کنید!")
+        st.warning("Please enter some medical text first!")
