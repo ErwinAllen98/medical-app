@@ -86,7 +86,13 @@ def gemini_available(settings: Settings | None = None) -> bool:
     s = settings or Settings.load()
     if not s.gemini_api_key:
         return False
-    try:
+    try:  # new SDK
+        from google import genai  # noqa: F401
+
+        return True
+    except ImportError:
+        pass
+    try:  # deprecated SDK, still works
         import google.generativeai  # noqa: F401
 
         return True
@@ -99,28 +105,57 @@ def claude_available(settings: Settings | None = None) -> bool:
     return bool(s.anthropic_api_key)
 
 
-def call_gemini(prompt: str, settings: Settings | None = None, json_mode: bool = True) -> LLMResult:
+def call_gemini(
+    prompt: str,
+    settings: Settings | None = None,
+    json_mode: bool = True,
+    timeout: int = 300,
+) -> LLMResult:
+    """Prefer the current `google-genai` SDK, fall back to the deprecated one."""
     s = settings or Settings.load()
     if not s.gemini_api_key:
         raise LLMError("GEMINI_API_KEY is not configured.")
-    try:
-        import google.generativeai as genai
-    except ImportError as exc:  # pragma: no cover
-        raise LLMError("google-generativeai is not installed.") from exc
 
-    genai.configure(api_key=s.gemini_api_key)
-    model = genai.GenerativeModel(s.gemini_model)
-    kwargs = {}
+    try:
+        from google import genai
+        from google.genai import types
+    except ImportError:
+        genai = None
+
+    if genai is not None:
+        config: dict = {"http_options": {"timeout": timeout * 1000}}
+        if json_mode:
+            config["response_mime_type"] = "application/json"
+        try:
+            client = genai.Client(api_key=s.gemini_api_key)
+            response = client.models.generate_content(
+                model=s.gemini_model,
+                contents=prompt,
+                config=types.GenerateContentConfig(**config),
+            )
+        except Exception as exc:
+            raise LLMError(f"Gemini call failed: {exc}") from exc
+        return LLMResult(text=response.text or "", provider="gemini", model=s.gemini_model)
+
+    try:
+        import google.generativeai as legacy
+    except ImportError as exc:  # pragma: no cover
+        raise LLMError("Install google-genai (pip install google-genai).") from exc
+
+    legacy.configure(api_key=s.gemini_api_key)
+    model = legacy.GenerativeModel(s.gemini_model)
+    kwargs = {"request_options": {"timeout": timeout}}
     if json_mode:
         kwargs["generation_config"] = {"response_mime_type": "application/json"}
     try:
         response = model.generate_content(prompt, **kwargs)
-    except Exception as exc:  # network / quota / model name
+    except Exception as exc:
         raise LLMError(f"Gemini call failed: {exc}") from exc
     return LLMResult(text=response.text or "", provider="gemini", model=s.gemini_model)
 
 
-def call_claude(prompt: str, settings: Settings | None = None, max_tokens: int = 8000) -> LLMResult:
+def call_claude(prompt: str, settings: Settings | None = None, max_tokens: int = 8000,
+                timeout: int = 180) -> LLMResult:
     s = settings or Settings.load()
     if not s.anthropic_api_key:
         raise LLMError("ANTHROPIC_API_KEY is not configured.")
@@ -142,7 +177,7 @@ def call_claude(prompt: str, settings: Settings | None = None, max_tokens: int =
                 "max_tokens": max_tokens,
                 "messages": [{"role": "user", "content": prompt}],
             },
-            timeout=180,
+            timeout=timeout,
         )
     except Exception as exc:
         raise LLMError(f"Claude call failed: {exc}") from exc

@@ -98,6 +98,7 @@ nav4, nav5, nav6 = st.columns(3)
 nav_link("pages/5_💊_Prescription.py", "Prescription", "💊", nav4)
 nav_link("pages/6_🔁_Adaptive_Questions.py", "Re-test", "🔁", nav5)
 nav_link("pages/7_🏆_Mastery_&_Notion.py", "Mastery", "🏆", nav6)
+nav_link("pages/8_⚙️_Connections.py", "Connections — add your API keys", "⚙️")
 
 # ---------------------------------------------------------------------------
 # 4. Detail, kept out of the way

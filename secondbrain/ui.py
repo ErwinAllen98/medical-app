@@ -64,6 +64,12 @@ def page(title: str, subtitle: str, icon: str = "🧠") -> None:
         f"<div class='sb-hero'><h1>{icon} {title}</h1><p>{subtitle}</p></div>",
         unsafe_allow_html=True,
     )
+    try:
+        from .secrets_store import apply_to_env
+
+        apply_to_env()
+    except Exception:
+        pass
     sidebar()
 
 
@@ -83,11 +89,17 @@ def sidebar() -> None:
 
         st.divider()
         st.markdown("**Connections**")
-        st.write(_dot(bool(settings.gemini_api_key)) + " Gemini / NotebookLM")
+        st.write(_dot(bool(settings.gemini_api_key)) + " Gemini API")
+        st.write("🔵 NotebookLM — no API (copy/paste)")
         st.write(_dot(bool(settings.anthropic_api_key)) + " Claude (diagnostics)")
-        st.write(_dot(_anki_up(settings)) + " AnkiConnect")
+        st.write(_dot(bool(settings.ankiweb_username and settings.ankiweb_password)) + " AnkiWeb sync")
+        st.write(_dot(_anki_up(settings)) + " AnkiConnect (desktop)")
         st.write(_dot(bool(settings.notion_token and settings.notion_database_id)) + " Notion")
         st.caption("Missing keys are fine — every step has a manual copy-paste bridge.")
+        try:
+            st.page_link("pages/8_⚙️_Connections.py", label="Set up connections", icon="⚙️")
+        except Exception:
+            pass
 
         st.divider()
         st.caption("Dr Erfan Alinejad Ghadi · Iran Medical Council No. 219890")

@@ -120,9 +120,21 @@ streamlit run app.py
 Open the hub, press **“Load demo collection”** on the home page to watch the whole loop run on a
 seeded 60-day FSRS history, then start replacing it with your own sources.
 
-### Secrets (all optional)
+### Connections (all optional)
 
-Copy `.streamlit/secrets.toml.example` → `.streamlit/secrets.toml`:
+Open the **⚙️ Connections** page in the app, paste the keys, press *Save* and then *Test everything*.
+The page writes `.streamlit/secrets.toml` (chmod 600, git-ignored) — no key ever needs to be typed
+into a chat.
+
+| Service | API? | Used for |
+|---|---|---|
+| Claude | ✅ full API | diagnosing why the knowledge fails |
+| Notion | ✅ full API | archiving mastered knowledge |
+| Anki | ✅ via your AnkiWeb account | pushing cards, pulling review history |
+| Gemini | ✅ plain Gemini API | extraction and adaptive questions |
+| **NotebookLM** | ❌ **no public API exists** | stays copy-and-paste — which is what keeps the answers grounded in *your* sources |
+
+Or edit `.streamlit/secrets.toml` by hand:
 
 ```toml
 GEMINI_API_KEY = "..."       # extraction + adaptive questions
