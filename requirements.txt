@@ -1,3 +1,6 @@
-streamlit
-google-generativeai
-fsrs
+streamlit>=1.49
+google-generativeai>=0.8
+requests>=2.31
+fsrs>=5.0
+genanki>=0.13
+pandas>=2.0
