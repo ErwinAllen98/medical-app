@@ -49,6 +49,15 @@ BASE_CSS = """
 
 @st.cache_resource
 def get_store() -> Store:
+    """Open the database, restoring the last backup when the host has been wiped."""
+    try:
+        from .backup import restore_if_missing
+        from .secrets_store import apply_to_env
+
+        apply_to_env()
+        restore_if_missing()
+    except Exception:
+        pass
     return Store()
 
 

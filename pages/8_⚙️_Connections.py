@@ -83,6 +83,43 @@ if st.button("🔌 Test everything", width="stretch"):
             st.warning(f"**{name}** — {result.message}")
 
 # ---------------------------------------------------------------------------
+st.subheader("Backup — so a free host cannot lose your data")
+st.caption(
+    "Free hosting wipes its disk on every restart. The database is a few kilobytes, so the hub "
+    "stores it in a private GitHub repository whenever you tap Sync, and restores it automatically "
+    "when the host comes back empty."
+)
+
+from secondbrain import backup  # noqa: E402
+
+if not backup.configured(settings):
+    st.info("Add a GitHub token and a **private** repository above to switch this on.")
+else:
+    try:
+        info = backup.remote_info(settings)
+        st.write(
+            f"🟢 {settings.backup_repo} · {settings.backup_path} — "
+            + (f"{info.size / 1024:.0f} KB stored" if info.exists else "no backup yet")
+        )
+    except backup.BackupError as exc:
+        st.error(str(exc))
+
+    b1, b2 = st.columns(2)
+    if b1.button("⬆︎ Back up now", width="stretch"):
+        try:
+            result = backup.push(settings)
+            st.success(f"{result['bytes'] / 1024:.0f} KB saved to {result['repo']}.")
+        except backup.BackupError as exc:
+            st.error(str(exc))
+    if b2.button("⬇︎ Restore from backup", width="stretch"):
+        try:
+            result = backup.pull(settings)
+            st.success("Restored — reload the page." if result.get("restored") else result.get("reason", ""))
+            st.cache_resource.clear()
+        except backup.BackupError as exc:
+            st.error(str(exc))
+
+# ---------------------------------------------------------------------------
 with st.expander("Where the keys come from"):
     st.markdown(
         """

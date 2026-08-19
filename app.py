@@ -67,20 +67,29 @@ else:
         st.success("No open knowledge gap. Keep reviewing in Anki and sync your answers back.")
 
 # ---------------------------------------------------------------------------
-# 2. One button that advances the whole loop
+# 2. One button. Nothing runs on a schedule — the loop turns when you tap this.
 # ---------------------------------------------------------------------------
-if st.button("🔄 Run the loop", type="primary", width="stretch"):
-    with st.spinner("Analysing your performance…"):
-        report = pipeline.run_cycle(store, pull_from_anki=False)
+if st.button("🔄 Sync", type="primary", width="stretch"):
+    with st.spinner("Fetching your answers, analysing, prescribing, backing up…"):
+        report = pipeline.full_sync(store)
     st.success(
-        f"{report.weak_units} weak units · {report.plans} prescriptions · "
-        f"{len(report.promoted)} mastered"
+        f"{report.answers_pulled} answers in · {report.cards_pushed} cards out · "
+        f"{report.prescriptions} prescriptions"
+        + (" · backed up ✅" if report.backed_up else "")
     )
+    if report.next_action:
+        st.info(f"👉 Next: {report.next_action}")
     for label in report.reactivated:
         st.warning(f"♻️ Reactivated after a decline: {label}")
-    for line in report.transitions[:6]:
-        st.caption(line)
+    for step in report.steps:
+        st.caption(step)
+    for problem in report.problems:
+        st.warning(problem)
     st.rerun()
+st.caption(
+    "Nothing runs in the background: the loop advances only when you tap Sync — "
+    "no server, no computer left on."
+)
 
 # ---------------------------------------------------------------------------
 # 3. Where everything stands

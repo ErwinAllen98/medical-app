@@ -39,6 +39,19 @@ FIELDS: dict[str, tuple[str, bool, str, str]] = {
         "https://ankiweb.net/account/login",
     ),
     "ANKIWEB_PASSWORD": ("AnkiWeb password", True, "Stored locally only, never sent anywhere else.", ""),
+    "GITHUB_TOKEN": (
+        "GitHub token (backup)",
+        True,
+        "Keeps your data alive on a free host. Fine-grained token with Contents: read & write "
+        "on one PRIVATE repository.",
+        "https://github.com/settings/personal-access-tokens",
+    ),
+    "GITHUB_REPO": (
+        "Backup repository",
+        False,
+        "owner/name of the private repo that stores the database file.",
+        "",
+    ),
     "NOTION_TOKEN": (
         "Notion integration token",
         True,
@@ -184,6 +197,21 @@ def test_notion(settings: Settings | None = None) -> TestResult:
         return TestResult(False, str(exc)[:300])
 
 
+def test_backup(settings: Settings | None = None) -> TestResult:
+    from .backup import BackupError, configured, remote_info
+
+    s = settings or Settings.load()
+    if not configured(s):
+        return TestResult(False, "No token or repository set.")
+    try:
+        info = remote_info(s)
+    except BackupError as exc:
+        return TestResult(False, str(exc)[:300])
+    if info.exists:
+        return TestResult(True, f"Backup found in {s.backup_repo} ({info.size / 1024:.0f} KB).")
+    return TestResult(True, f"Repository reachable — no backup stored yet ({s.backup_repo}).")
+
+
 def test_anki_connect(settings: Settings | None = None) -> TestResult:
     from .anki import AnkiConnect
 
@@ -201,6 +229,7 @@ _RAW_TESTS = {
     "Claude": test_claude,
     "AnkiWeb": test_ankiweb,
     "Notion": test_notion,
+    "Backup": test_backup,
     "AnkiConnect (desktop)": test_anki_connect,
 }
 
@@ -233,4 +262,5 @@ def status(settings: Settings | None = None) -> dict[str, bool]:
         "Claude": bool(s.anthropic_api_key),
         "AnkiWeb": bool(s.ankiweb_username and s.ankiweb_password),
         "Notion": bool(s.notion_token and s.notion_database_id),
+        "Backup": bool(s.backup_token and s.backup_repo),
     }

@@ -109,6 +109,16 @@ last 3 reviews lapse-free · no unresolved error diagnosis.
 
 ---
 
+## Free, phone-only setup
+
+No server, no computer left on: host the hub on **Streamlit Community Cloud** (free), keep the
+database alive in a **private GitHub repo**, and turn the loop by tapping **Sync**.
+Full instructions: **[DEPLOY.md](DEPLOY.md)**.
+
+Nothing runs on a schedule — by design. A free setup cannot honestly promise background jobs,
+so the hub does everything in one tap: pull your Anki answers → score the knowledge gaps →
+write at most three prescriptions → send new cards → back the database up.
+
 ## Running it
 
 ```bash
@@ -129,7 +139,8 @@ into a chat.
 | Service | API? | Used for |
 |---|---|---|
 | Claude | ✅ full API | diagnosing why the knowledge fails |
-| Notion | ✅ full API | archiving mastered knowledge |
+| Notion | ✅ full API | archiving mastered knowledge (optional — the hub already stores everything) |
+| GitHub | ✅ contents API | free, persistent backup of the database |
 | Anki | ✅ via your AnkiWeb account | pushing cards, pulling review history |
 | Gemini | ✅ plain Gemini API | extraction and adaptive questions |
 | **NotebookLM** | ❌ **no public API exists** | stays copy-and-paste — which is what keeps the answers grounded in *your* sources |

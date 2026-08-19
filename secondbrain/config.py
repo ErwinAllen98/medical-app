@@ -34,6 +34,10 @@ class Settings:
     ankiweb_username: str = ""
     ankiweb_password: str = ""
     ankiweb_endpoint: str = ""
+    backup_token: str = ""
+    backup_repo: str = ""
+    backup_path: str = "backup/second_brain.db"
+    backup_branch: str = "main"
     anki_connect_url: str = "http://127.0.0.1:8765"
     anki_deck: str = "Second Brain::Medical"
     anki_model: str = "Second Brain Basic"
@@ -50,6 +54,10 @@ class Settings:
             ankiweb_username=_secret("ANKIWEB_USERNAME"),
             ankiweb_password=_secret("ANKIWEB_PASSWORD"),
             ankiweb_endpoint=_secret("ANKIWEB_ENDPOINT"),
+            backup_token=_secret("GITHUB_TOKEN"),
+            backup_repo=_secret("GITHUB_REPO"),
+            backup_path=_secret("GITHUB_BACKUP_PATH", "backup/second_brain.db"),
+            backup_branch=_secret("GITHUB_BACKUP_BRANCH", "main"),
             anki_connect_url=_secret("ANKI_CONNECT_URL", "http://127.0.0.1:8765"),
             anki_deck=_secret("ANKI_DECK", "Second Brain::Medical"),
             anki_model=_secret("ANKI_MODEL", "Second Brain Basic"),
@@ -69,6 +77,9 @@ MASTERY_MIN_FORMULATIONS = 2       # different question wordings
 MASTERY_MIN_APPLICATION_LEVEL = 4  # at least one correct at level >= 4
 MASTERY_CLEAN_STREAK = 3           # last N reviews must be lapse-free
 MASTERY_MIN_STABILITY_DAYS = 21.0  # FSRS stability floor
+
+# Keep the daily workload human: never hand back a wall of prescriptions.
+DAILY_PRESCRIPTION_LIMIT = 3
 
 # Weakness detection
 REPEATED_FAILURE_THRESHOLD = 3     # lapses on one item => repeated failure

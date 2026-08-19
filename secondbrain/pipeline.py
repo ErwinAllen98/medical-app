@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from . import anki as anki_mod
-from . import diagnostics, lifecycle, mastery, reports
+from . import backup, diagnostics, lifecycle, mastery, reports
+from .config import DAILY_PRESCRIPTION_LIMIT
 from .models import Card, KnowledgeUnit, Review, Source
 from .store import Store
 
@@ -57,6 +58,79 @@ def run_cycle(store: Store, pull_from_anki: bool = True) -> CycleReport:
     store.log_event("cycle", {
         "pulled": report.pulled_reviews, "weak": report.weak_units,
         "plans": report.plans, "promoted": len(report.promoted),
+    })
+    return report
+
+
+@dataclass
+class SyncReport:
+    """Everything one tap of Sync did."""
+
+    restored: bool = False
+    answers_pulled: int = 0
+    cards_pushed: int = 0
+    gaps: int = 0
+    prescriptions: int = 0
+    mastered: list[str] = field(default_factory=list)
+    reactivated: list[str] = field(default_factory=list)
+    backed_up: bool = False
+    next_action: str = ""
+    steps: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)
+
+
+def full_sync(store: Store, limit: int = DAILY_PRESCRIPTION_LIMIT) -> SyncReport:
+    """The single button: fetch answers, analyse, prescribe, send cards, back up.
+
+    Nothing here runs on a schedule — it runs when the doctor taps Sync, which is
+    exactly what a free, no-server setup can guarantee.
+    """
+    from .ankiweb import AnkiWebBridge, AnkiWebError, library_available
+
+    report = SyncReport()
+
+    # 1. Anki round trip (answers in, new cards out)
+    bridge = AnkiWebBridge()
+    if library_available() and bridge.configured:
+        try:
+            result = bridge.round_trip(store)
+            report.answers_pulled = result.pulled
+            report.cards_pushed = result.pushed
+            report.steps.append(
+                f"AnkiWeb: {result.status} · {result.pulled} answers in · {result.pushed} cards out"
+            )
+            if result.needs_choice:
+                report.problems.extend(result.notes)
+        except AnkiWebError as exc:
+            report.problems.append(f"AnkiWeb: {exc}")
+    else:
+        report.steps.append("AnkiWeb not configured — using whatever review data is already here.")
+
+    # 2. Analyse and prescribe
+    bundle = reports.run_analysis(store, scale="daily", limit=limit)
+    report.gaps = len([g for g in bundle.gaps if g.gap_score > 0])
+    report.prescriptions = len(bundle.prescriptions)
+    report.reactivated = bundle.window.reactivated
+    report.mastered = [r.label for r in mastery.evaluate_all(store) if r.mastered]
+    report.steps.append(f"Analysis: {report.gaps} gaps scored, {report.prescriptions} prescriptions")
+
+    top = bundle.prescriptions[0] if bundle.prescriptions else None
+    if top:
+        ku = store.get_ku(top.ku_id)
+        report.next_action = f"{ku.label if ku else top.ku_id} — {top.how_much}"
+
+    # 3. Persist, so a free ephemeral host cannot lose anything
+    if backup.configured():
+        try:
+            info = backup.push()
+            report.backed_up = True
+            report.steps.append(f"Backup: {info['bytes'] / 1024:.0f} KB → {info['repo']}")
+        except backup.BackupError as exc:
+            report.problems.append(f"Backup: {exc}")
+
+    store.log_event("full_sync", {
+        "pulled": report.answers_pulled, "pushed": report.cards_pushed,
+        "prescriptions": report.prescriptions, "backed_up": report.backed_up,
     })
     return report
 
