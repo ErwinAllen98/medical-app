@@ -51,7 +51,9 @@ NOTION .................... mastered knowledge + the weakness history behind it
 | Layer | Module | What it does |
 |---|---|---|
 | 1–2 Extraction | `secondbrain/extraction.py` | Builds the source-grounded NotebookLM/Gemini prompt, parses the JSON, **rejects any knowledge unit that cannot name its chapter/section/page** |
-| 3 Transfer | `secondbrain/anki.py` | AnkiConnect client (deck + note type auto-created), `.apkg` fallback via genanki, review-log pull incl. FSRS memory state |
+| 3 Transfer | `secondbrain/ankiweb.py` | **Phone path**: drives a real Anki collection with the `anki` library and syncs it with AnkiWeb, so AnkiDroid only has to press Sync |
+| 3 Transfer | `secondbrain/anki.py` | Desktop path: AnkiConnect client (deck + note type auto-created) and `.apkg` export via genanki |
+| 4 Sensor | `secondbrain/colpkg.py` | Reads the review log straight out of an AnkiDroid export (`.colpkg`/`.apkg`, incl. zstd format) |
 | 4 Sensor | `secondbrain/ingest.py` | Flexible CSV import of Anki revlog, local FSRS recomputation (`fsrs` package) |
 | 5–6 Diagnosis | `secondbrain/diagnostics.py`, `secondbrain/claude.py` | Cumulative Weakness Profile, failure signatures, heuristic error hypotheses; longitudinal dossier + Claude prompt/parser |
 | 7–8 Repair | `secondbrain/restudy.py` | Review targets inside the source and WHAT→WHERE→WHY→HOW plans |
@@ -110,13 +112,39 @@ ANKI_CONNECT_URL = "http://127.0.0.1:8765"
 exactly what we want — so each stage shows the exact prompt to paste into NotebookLM/Claude and
 accepts the JSON reply back. The API path is a shortcut, never a requirement.
 
-### Anki setup
+### 📱 From a phone (Chrome + AnkiDroid) — the intended workflow
 
-1. Install the **AnkiConnect** add-on (code `2055492159`) and keep Anki open.
-2. The hub creates the deck `Second Brain::Medical` and the note type `Second Brain Basic`
-   (fields: Question, Answer, Explanation, Source, KnowledgeUnit, SecondBrainID).
-3. If Anki runs on another machine: export `.apkg` from the Cards page and import the review log
-   as CSV on the Performance page.
+The hub is mobile-first: single column, thumb-sized buttons, a big **Copy the prompt** button and a
+direct link to NotebookLM.
+
+**Option A — AnkiWeb sync (recommended, no computer needed)**
+
+```toml
+ANKIWEB_USERNAME = "your AnkiWeb e-mail"
+ANKIWEB_PASSWORD = "your AnkiWeb password"
+```
+
+1. 📚 **Capture** — copy the prompt, paste it into your NotebookLM notebook, paste the JSON back.
+2. 🔄 **Sync** — “Sync now”. The hub keeps its own Anki collection (`data/ankiweb/`), adds the new
+   notes and syncs with AnkiWeb.
+3. **AnkiDroid ▸ Sync** — the cards arrive on the phone. Study normally.
+4. 🔄 **Sync now** again — your answers (revlog + FSRS stability/difficulty) come back into the hub.
+
+A *full upload* would overwrite the collection on AnkiWeb, so the hub never does it implicitly:
+a full-sync request is resolved by **downloading** your AnkiWeb collection first, and forcing an
+upload requires typing `FULL UPLOAD`.
+
+**Option B — file bridge (no account, nothing stored)**
+
+1. 🔄 Sync ▸ *File (AnkiDroid)* ▸ **Build the deck file** ▸ download the `.apkg`.
+2. Chrome ▸ Downloads ▸ tap the file ▸ open with **AnkiDroid**.
+3. After studying: AnkiDroid ▸ Settings ▸ Advanced ▸ **Export collection** (with scheduling).
+4. Upload that `.colpkg` back on the same tab — cards are matched by their `SecondBrainID` field,
+   so renumbered notes still line up.
+
+**Option C — desktop** — install the **AnkiConnect** add-on (code `2055492159`), keep Anki open and
+use the 🖥 tab. The hub creates the deck `Second Brain::Medical` and the note type
+`Second Brain Basic` (Question, Answer, Explanation, Source, KnowledgeUnit, SecondBrainID).
 
 ### CLI (cron-friendly)
 
@@ -125,7 +153,8 @@ python -m secondbrain.cli seed-demo        # sample collection
 python -m secondbrain.cli cycle --pull     # pull reviews → profile → diagnose → plans → mastery
 python -m secondbrain.cli profile          # the cumulative weakness profile
 python -m secondbrain.cli plans            # today's targeted re-study plans
-python -m secondbrain.cli push-anki        # transfer new cards
+python -m secondbrain.cli sync             # AnkiWeb round trip (push cards, pull answers)
+python -m secondbrain.cli push-anki        # transfer new cards over AnkiConnect
 python -m secondbrain.cli import-reviews reviews.csv
 python -m secondbrain.cli mastery          # who is close, what is missing
 python -m secondbrain.cli notion           # archive mastered units
@@ -139,13 +168,12 @@ python -m secondbrain.cli notion           # archive mastered units
 |---|---|
 | 🧠 Home | Loop status, cross-card patterns, today's priorities, one-button cycle |
 | 📚 Sources | Register sources, run the grounded extraction, review what was rejected |
-| 🃏 Anki Transfer | Push to Anki / build `.apkg` / browse every card and its generation |
-| 📈 Performance | Pull the review log, import CSV, recompute FSRS state locally |
+| 🔄 Sync | AnkiWeb sync · AnkiDroid file bridge · AnkiConnect · CSV |
+| 📈 Performance | Daily load, lapse rate, per-unit stability, local FSRS state |
 | 🔍 Diagnosis | Cumulative Weakness Profile + Claude's diagnostic engine + the taxonomy |
 | 🎯 Re-study | WHAT → WHERE → WHY → HOW, with what to ignore for now |
 | 🔁 Adaptive Questions | New formulations at the weakest cognitive layer |
 | 🏆 Mastery & Notion | Six-criterion mastery check and the Notion archive |
-| 💉 Clinical Tools | Tirzepatide Pen Master Calculator — the application layer |
 
 Data lives in `data/second_brain.db` (SQLite, git-ignored). Exports land in `data/exports/`.
 
@@ -158,7 +186,9 @@ Data lives in `data/second_brain.db` (SQLite, git-ignored). Exports land in `dat
 
 - منابع معتبر در **NotebookLM** بارگذاری می‌شوند؛ استخراج فقط از همان منابع انجام می‌شود و هر
   واحد دانشی که فصل/بخش/صفحه نداشته باشد **رد می‌شود**.
-- کارت‌ها با **AnkiConnect** خودکار وارد آنکی می‌شوند (بدون کپی‌پیست).
+- کارت‌ها خودکار وارد آنکی می‌شوند: روی گوشی از طریق **سینک با AnkiWeb** (هاب یک کالکشن واقعی
+  آنکی نگه می‌دارد و با حساب تو سینک می‌کند؛ در AnkiDroid فقط دکمه‌ی Sync را می‌زنی)، یا با
+  فایل `.apkg`، یا روی دسکتاپ با **AnkiConnect**. تاریخچه‌ی مرور هم از همان مسیر برمی‌گردد.
 - **FSRS** فقط حسگر است: می‌گوید «داری اشتباه می‌کنی»، نه «چرا».
 - **Claude** با تحلیل طولی، نوع خطا را از میان ۱۰ دسته تعیین می‌کند و **پروفایل تجمعی ضعف**
   می‌سازد؛ الگو را می‌بیند، نه کارتِ تکی.

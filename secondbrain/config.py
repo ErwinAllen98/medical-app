@@ -31,6 +31,9 @@ class Settings:
     anthropic_api_key: str = ""
     notion_token: str = ""
     notion_database_id: str = ""
+    ankiweb_username: str = ""
+    ankiweb_password: str = ""
+    ankiweb_endpoint: str = ""
     anki_connect_url: str = "http://127.0.0.1:8765"
     anki_deck: str = "Second Brain::Medical"
     anki_model: str = "Second Brain Basic"
@@ -44,6 +47,9 @@ class Settings:
             anthropic_api_key=_secret("ANTHROPIC_API_KEY"),
             notion_token=_secret("NOTION_TOKEN"),
             notion_database_id=_secret("NOTION_DATABASE_ID"),
+            ankiweb_username=_secret("ANKIWEB_USERNAME"),
+            ankiweb_password=_secret("ANKIWEB_PASSWORD"),
+            ankiweb_endpoint=_secret("ANKIWEB_ENDPOINT"),
             anki_connect_url=_secret("ANKI_CONNECT_URL", "http://127.0.0.1:8765"),
             anki_deck=_secret("ANKI_DECK", "Second Brain::Medical"),
             anki_model=_secret("ANKI_MODEL", "Second Brain Basic"),

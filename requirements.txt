@@ -4,3 +4,5 @@ requests>=2.31
 fsrs>=5.0
 genanki>=0.13
 pandas>=2.0
+anki>=24.6
+zstandard>=0.22

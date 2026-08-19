@@ -11,6 +11,24 @@ ACCENT = "#1c5f4a"
 
 BASE_CSS = """
 <style>
+  /* --- mobile first: the hub is used from Chrome on a phone --- */
+  .block-container { padding-top: 1.1rem !important; padding-bottom: 3rem !important;
+                     padding-left: .8rem !important; padding-right: .8rem !important; max-width: 900px; }
+  .stButton > button, .stDownloadButton > button, .stLinkButton > a {
+      min-height: 46px; font-size: 1rem; border-radius: 11px; }
+  .stTextInput input, .stTextArea textarea, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+      font-size: 16px !important; }
+  .stTabs [data-baseweb="tab-list"] { overflow-x: auto; scrollbar-width: none; }
+  .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
+  .stTabs [data-baseweb="tab"] { white-space: nowrap; }
+  @media (max-width: 640px) {
+      .sb-hero { padding: 16px 16px; }
+      .sb-hero h1 { font-size: 1.28rem; }
+      .sb-hero p { font-size: .84rem; }
+      div[data-testid="stMetricValue"] { font-size: 1.15rem !important; }
+      div[data-testid="stMetricLabel"] { font-size: .72rem !important; }
+      code, pre { font-size: .74rem !important; }
+  }
   .sb-hero { background: linear-gradient(135deg, #14352b 0%, #1c5f4a 55%, #2c7a5f 100%);
              color: #f6f4ef; padding: 22px 26px; border-radius: 14px; margin-bottom: 18px; }
   .sb-hero h1 { margin: 0 0 6px 0; font-size: 1.65rem; letter-spacing: -0.01em; }
@@ -35,7 +53,12 @@ def get_store() -> Store:
 
 
 def page(title: str, subtitle: str, icon: str = "🧠") -> None:
-    st.set_page_config(page_title=f"{title} · Second Brain", page_icon=icon, layout="wide")
+    st.set_page_config(
+        page_title=f"{title} · Second Brain",
+        page_icon=icon,
+        layout="centered",                 # phone-friendly single column
+        initial_sidebar_state="collapsed",  # the sidebar is a drawer on mobile
+    )
     st.markdown(BASE_CSS, unsafe_allow_html=True)
     st.markdown(
         f"<div class='sb-hero'><h1>{icon} {title}</h1><p>{subtitle}</p></div>",
@@ -84,6 +107,51 @@ def _anki_up(settings: Settings) -> bool:
         return False
 
 
+
+def copy_button(text: str, label: str = "📋 Copy the prompt", key: str = "") -> None:
+    """A big, thumb-sized copy button that works in Chrome on Android."""
+    import json as _json
+
+    import streamlit.components.v1 as components
+
+    payload = _json.dumps(text)
+    components.html(
+        f"""
+        <style>
+          .cp {{ width:100%; min-height:48px; font-size:16px; font-weight:600; cursor:pointer;
+                 border-radius:11px; border:1px solid #1c5f4a; background:#1c5f4a; color:#f6f4ef;
+                 font-family:-apple-system,Roboto,sans-serif; }}
+          .cp:active {{ filter:brightness(1.15); }}
+          .ok {{ background:#2c7a5f; border-color:#2c7a5f; }}
+        </style>
+        <button class="cp" id="b{key}">{label}</button>
+        <textarea id="t{key}" style="position:absolute;left:-9999px;top:0"></textarea>
+        <script>
+          const text = {payload};
+          const btn = document.getElementById("b{key}");
+          const ta  = document.getElementById("t{key}");
+          btn.addEventListener("click", async () => {{
+            let done = false;
+            try {{ await navigator.clipboard.writeText(text); done = true; }} catch (e) {{}}
+            if (!done) {{
+              ta.value = text; ta.select(); ta.setSelectionRange(0, text.length);
+              try {{ done = document.execCommand("copy"); }} catch (e) {{}}
+            }}
+            btn.textContent = done ? "✅ Copied — now paste it into NotebookLM"
+                                   : "⚠️ Long-press the text below to copy";
+            btn.classList.add("ok");
+            setTimeout(() => {{ btn.textContent = {_json.dumps(label)}; btn.classList.remove("ok"); }}, 3500);
+          }});
+        </script>
+        """,
+        height=62,
+    )
+
+
+def open_notebooklm() -> None:
+    st.link_button("🔗 Open NotebookLM", "https://notebooklm.google.com/", width="stretch")
+
+
 def llm_bridge(
     prompt: str,
     key: str,
@@ -101,11 +169,14 @@ def llm_bridge(
     settings = Settings.load()
     state_key = f"llm_out_{key}"
 
-    with st.expander("📋 The exact prompt (paste this into NotebookLM / Claude)", expanded=False):
+    copy_button(prompt, key=key)
+    if provider == "gemini":
+        open_notebooklm()
+    st.caption(help_text or "Grounded in your sources only — no outside facts allowed.")
+    with st.expander("👀 See the prompt"):
         st.code(prompt, language="markdown")
-        st.caption(help_text or "Grounded in your sources only — no outside facts allowed.")
 
-    tab_api, tab_manual = st.tabs(["⚡ Run through the API", "📥 Paste the reply"])
+    tab_manual, tab_api = st.tabs(["📥 Paste the reply", "⚡ Run through the API"])
 
     with tab_api:
         available = gemini_available(settings) if provider == "gemini" else claude_available(settings)

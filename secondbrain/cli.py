@@ -4,6 +4,7 @@
     python -m secondbrain.cli cycle --pull
     python -m secondbrain.cli profile
     python -m secondbrain.cli plans
+    python -m secondbrain.cli sync
     python -m secondbrain.cli push-anki
     python -m secondbrain.cli export-apkg
     python -m secondbrain.cli import-reviews reviews.csv
@@ -31,6 +32,9 @@ def main(argv: list[str] | None = None) -> int:
     cycle.add_argument("--pull", action="store_true", help="pull review history from AnkiConnect first")
     sub.add_parser("profile")
     sub.add_parser("plans")
+    sync = sub.add_parser("sync", help="AnkiWeb round trip: push new cards, pull review history")
+    sync.add_argument("--no-push", action="store_true")
+    sync.add_argument("--no-pull", action="store_true")
     sub.add_parser("push-anki")
     sub.add_parser("export-apkg")
     imp = sub.add_parser("import-reviews")
@@ -65,6 +69,20 @@ def main(argv: list[str] | None = None) -> int:
         for plan in store.list_plans():
             print(restudy.plan_to_markdown(store, plan))
             print("\n" + "-" * 70 + "\n")
+
+    elif args.command == "sync":
+        from .ankiweb import AnkiWebBridge, AnkiWebError
+
+        try:
+            result = AnkiWebBridge().round_trip(
+                store, push=not args.no_push, pull=not args.no_pull
+            )
+            print(f"{result.status}: pushed={result.pushed} pulled={result.pulled}")
+            for note in result.notes:
+                print("  -", note)
+        except AnkiWebError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
 
     elif args.command == "push-anki":
         try:

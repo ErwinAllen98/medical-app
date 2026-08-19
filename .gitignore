@@ -5,3 +5,4 @@ __pycache__/
 data/
 *.apkg
 .DS_Store
+data/ankiweb/

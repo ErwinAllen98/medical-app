@@ -22,6 +22,19 @@ page(
 store = get_store()
 stats = store.stats()
 
+
+# ---------------------------------------------------------------------------
+# Phone-first navigation (the sidebar is a drawer on mobile)
+# ---------------------------------------------------------------------------
+nav1, nav2, nav3 = st.columns(3)
+nav1.page_link("pages/1_📚_Sources.py", label="Capture", icon="📚")
+nav2.page_link("pages/2_🔄_Sync.py", label="Sync", icon="🔄")
+nav3.page_link("pages/4_🔍_Diagnosis.py", label="Diagnose", icon="🔍")
+nav4, nav5, nav6 = st.columns(3)
+nav4.page_link("pages/5_🎯_Re-study.py", label="Re-study", icon="🎯")
+nav5.page_link("pages/6_🔁_Adaptive_Questions.py", label="Re-test", icon="🔁")
+nav6.page_link("pages/7_🏆_Mastery_&_Notion.py", label="Mastery", icon="🏆")
+
 # ---------------------------------------------------------------------------
 # The four questions the system exists to answer
 # ---------------------------------------------------------------------------
@@ -126,6 +139,28 @@ with right:
         else:
             missing = ", ".join(c.label for c in rep.missing[:2])
             st.markdown(f"⏳ **{rep.label}** — {rep.score:.0%} · missing: {missing}")
+
+
+st.divider()
+st.subheader("📱 The loop from your phone")
+st.markdown(
+    """
+<div class='sb-card'>
+<b>1 · Capture</b> — open <b>Capture</b>, tap <i>Copy the prompt</i>, open NotebookLM in another
+Chrome tab, paste it into the notebook that holds your sources, then paste the JSON reply back.<br><br>
+<b>2 · Sync</b> — tap <b>Sync now</b>. The hub pushes the cards to AnkiWeb; in AnkiDroid you just
+press Sync and they are on your phone.<br><br>
+<b>3 · Study</b> — AnkiDroid + FSRS, as usual.<br><br>
+<b>4 · Sync back</b> — tap <b>Sync now</b> again: your answers come back here.<br><br>
+<b>5 · Diagnose → Re-study → Re-test</b> — Claude says why you failed and exactly what to reread;
+the system then writes new questions on the same weakness.
+</div>
+""",
+    unsafe_allow_html=True,
+)
+nav_a, nav_b = st.columns(2)
+nav_a.page_link("pages/1_📚_Sources.py", label="Start capturing", icon="📚")
+nav_b.page_link("pages/2_🔄_Sync.py", label="Sync with AnkiWeb", icon="🔄")
 
 st.divider()
 with st.expander("Recent activity"):
