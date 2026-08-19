@@ -65,7 +65,8 @@ class KnowledgeUnit:
     location: str = ""  # page / table / figure / timestamp
     why_relevant: str = ""
     importance: int = 3  # 1..5 clinical importance
-    status: str = "LEARNING"  # LEARNING | REPAIRING | CONSOLIDATING | MASTERED
+    status: str = "UNSEEN"  # see taxonomy.STATUS_FLOW
+    status_changed_at: str | None = None
     id: str = field(default_factory=lambda: new_id("ku"))
     created_at: str = field(default_factory=now_iso)
     mastered_at: str | None = None
@@ -102,6 +103,9 @@ class Card:
     explanation: str = ""
     cognitive_level: int = 1  # 1..5, see taxonomy.COGNITIVE_LEVELS
     error_target: str = ""  # which error type this item probes
+    learning_objective: str = ""  # what I must be able to do after this card
+    difficulty: int = 3  # 1..5, editorial difficulty of the item
+    suspended: int = 0
     tags: list[str] = field(default_factory=list)
     generation: int = 1  # learning cycle that produced this item
     anki_note_id: int | None = None
@@ -192,13 +196,18 @@ class ReviewTarget:
 
 @dataclass
 class StudyPlan:
-    """A targeted re-study instruction: WHAT -> WHERE -> WHY -> HOW."""
+    """A Learning Prescription: WHAT · WHY · WHERE · WHAT TO STUDY · HOW · HOW MUCH."""
 
     ku_id: str
-    what: str
-    where: str
-    why: str
-    how: list[str] = field(default_factory=list)
+    what: str                       # what exactly I do not know
+    where: str                      # where in the source it is fixed
+    why: str                        # why the gap exists / why it matters
+    how: list[str] = field(default_factory=list)      # concrete instructions
+    what_to_study: str = ""         # the concept to relearn
+    how_much: str = ""              # the minimum necessary dose of study
+    methods: list[str] = field(default_factory=list)  # taxonomy.LEARNING_METHODS keys
+    gemini_prompt: str = ""         # ready to paste into NotebookLM
+    gap_score: float = 0.0
     next_level: int = 1
     error_types: list[str] = field(default_factory=list)
     priority: float = 0.0

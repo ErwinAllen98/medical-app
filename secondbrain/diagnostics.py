@@ -60,10 +60,13 @@ class UnitProfile:
     mean_stability: float | None = None
     min_retrievability: float | None = None
     mean_answer_seconds: float | None = None
+    mean_difficulty: float | None = None
     signatures: list[str] = field(default_factory=list)
     error_hypotheses: list[dict] = field(default_factory=list)
     severity: float = 0.0
     priority: float = 0.0
+    gap_score: float = 0.0
+    gap_factors: dict[str, float] = field(default_factory=dict)
     evidence: list[str] = field(default_factory=list)
 
     @property
@@ -284,6 +287,8 @@ def build_profile(store: Store) -> WeaknessProfile:
                     had_success = True
             p.repeated_failure_count = best
 
+            diff = [r.difficulty for r in reviews if r.difficulty is not None]
+            p.mean_difficulty = round(statistics.mean(diff), 2) if diff else None
             stab = [r.stability for r in reviews if r.stability is not None]
             retr = [r.retrievability for r in reviews if r.retrievability is not None]
             durs = [r.duration_ms for r in reviews if r.duration_ms]
@@ -299,6 +304,8 @@ def build_profile(store: Store) -> WeaknessProfile:
         failed_cards = [all_cards[r.card_id] for r in reviews if r.failed and r.card_id in all_cards]
         if p.attempts:
             p.error_hypotheses = _hypothesise(ku, p, failed_cards)
+
+        p.gap_score, p.gap_factors = _gap_score(p)
 
         # Severity: how badly broken × how clinically important × how fresh.
         volume = math.log1p(p.attempts)
@@ -332,6 +339,52 @@ def build_profile(store: Store) -> WeaknessProfile:
         patterns=patterns,
         generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
     )
+
+
+def _gap_score(p: UnitProfile) -> tuple[float, dict[str, float]]:
+    """Knowledge Gap Score (0-100).
+
+        frequency × severity × recency × retrieval difficulty × low stability
+
+    Every factor is normalised to 0-1 so the product stays interpretable and the
+    resulting ranking is a real priority list, not a raw error count.
+    """
+    if not p.attempts:
+        return 0.0, {}
+
+    # 1. How often does it fail (rate, weighted by how many attempts back it up)
+    confidence = min(1.0, p.attempts / 6.0)
+    frequency = round(p.failure_rate * (0.5 + 0.5 * confidence), 3)
+
+    # 2. How much does it matter clinically, and how deep is the failure
+    depth = min(1.0, 0.4 + 0.2 * p.repeated_failure_count + 0.2 * p.distinct_failed_cards)
+    severity = round((p.importance / 5.0) * depth, 3)
+
+    # 3. Is it a live problem or an old one
+    days = p.last_reviewed_days if p.last_reviewed_days is not None else 60.0
+    recency = round(max(0.25, min(1.0, 14.0 / (days + 1.0))), 3)
+
+    # 4. How hard is retrieval right now (FSRS difficulty, else the failure shape)
+    if p.mean_difficulty is not None:
+        retrieval = round(min(1.0, p.mean_difficulty / 10.0), 3)
+    else:
+        retrieval = round(min(1.0, 0.3 + 0.7 * p.failure_rate), 3)
+
+    # 5. How fragile is the memory (FSRS stability, 21 days = solid)
+    if p.mean_stability is not None:
+        low_stability = round(max(0.1, min(1.0, 21.0 / (p.mean_stability + 3.0))), 3)
+    else:
+        low_stability = 0.7
+
+    score = frequency * severity * recency * retrieval * low_stability * 100
+    factors = {
+        "frequency": frequency,
+        "severity": severity,
+        "recency": recency,
+        "retrieval_difficulty": retrieval,
+        "low_stability": low_stability,
+    }
+    return round(score, 2), factors
 
 
 def _topic_patterns(units: list[UnitProfile]) -> list[TopicPattern]:

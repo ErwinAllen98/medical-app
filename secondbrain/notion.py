@@ -236,6 +236,7 @@ def push_mastered(store: Store, ku_ids: list[str] | None = None) -> dict:
         try:
             result = client.create_page(page, schema)
             store.record_notion_export(ku_id, result.get("id", ""), result.get("url", ""))
+            store.set_ku_status(ku_id, "ARCHIVED")  # still reviewed by Anki, just archived
             sent += 1
         except NotionError as exc:
             errors.append(f"{ku_id}: {exc}")

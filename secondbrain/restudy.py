@@ -121,7 +121,7 @@ def generate_plans(store: Store, profile: WeaknessProfile, limit: int = 10) -> l
         plan = build_plan(store, unit)
         if plan:
             store.save_plan(plan)
-            store.set_ku_status(unit.ku_id, "REPAIRING")
+            store.set_ku_status(unit.ku_id, "RELEARNING")
             plans.append(plan)
     store.log_event("study_plans", {"count": len(plans)})
     return plans

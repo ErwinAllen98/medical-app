@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS knowledge_units (
     location TEXT,
     why_relevant TEXT,
     importance INTEGER DEFAULT 3,
-    status TEXT DEFAULT 'LEARNING',
+    status TEXT DEFAULT 'UNSEEN',
+    status_changed_at TEXT,
     created_at TEXT,
     mastered_at TEXT,
     FOREIGN KEY (source_id) REFERENCES sources (id)
@@ -68,6 +69,9 @@ CREATE TABLE IF NOT EXISTS cards (
     explanation TEXT,
     cognitive_level INTEGER DEFAULT 1,
     error_target TEXT,
+    learning_objective TEXT,
+    difficulty INTEGER DEFAULT 3,
+    suspended INTEGER DEFAULT 0,
     tags_json TEXT,
     generation INTEGER DEFAULT 1,
     anki_note_id INTEGER,
@@ -112,6 +116,11 @@ CREATE TABLE IF NOT EXISTS study_plans (
     where_ TEXT,
     why TEXT,
     how_json TEXT,
+    what_to_study TEXT,
+    how_much TEXT,
+    methods_json TEXT,
+    gemini_prompt TEXT,
+    gap_score REAL,
     next_level INTEGER,
     error_types_json TEXT,
     priority REAL,
@@ -159,9 +168,30 @@ class Store:
         finally:
             con.close()
 
+    _MIGRATIONS = {
+        "cards": {
+            "learning_objective": "TEXT",
+            "difficulty": "INTEGER DEFAULT 3",
+            "suspended": "INTEGER DEFAULT 0",
+        },
+        "knowledge_units": {"status_changed_at": "TEXT"},
+        "study_plans": {
+            "what_to_study": "TEXT",
+            "how_much": "TEXT",
+            "methods_json": "TEXT",
+            "gemini_prompt": "TEXT",
+            "gap_score": "REAL",
+        },
+    }
+
     def _init_schema(self) -> None:
         with self.conn() as con:
             con.executescript(SCHEMA)
+            for table, columns in self._MIGRATIONS.items():
+                existing = {r[1] for r in con.execute(f"PRAGMA table_info({table})")}
+                for name, decl in columns.items():
+                    if name not in existing:
+                        con.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     # -- sources ----------------------------------------------------------
     def upsert_source(self, source: Source) -> Source:
@@ -203,11 +233,13 @@ class Store:
                 """INSERT INTO knowledge_units
                    (id, topic, subtopic, statement, clinical_significance, thresholds,
                     exceptions, algorithm, common_mistakes, source_id, chapter, section,
-                    location, why_relevant, importance, status, created_at, mastered_at)
+                    location, why_relevant, importance, status, status_changed_at,
+                    created_at, mastered_at)
                    VALUES
                    (:id, :topic, :subtopic, :statement, :clinical_significance, :thresholds,
                     :exceptions, :algorithm, :common_mistakes, :source_id, :chapter, :section,
-                    :location, :why_relevant, :importance, :status, :created_at, :mastered_at)
+                    :location, :why_relevant, :importance, :status, :status_changed_at,
+                    :created_at, :mastered_at)
                    ON CONFLICT(id) DO UPDATE SET
                        topic=excluded.topic, subtopic=excluded.subtopic,
                        statement=excluded.statement,
@@ -217,7 +249,8 @@ class Store:
                        source_id=excluded.source_id, chapter=excluded.chapter,
                        section=excluded.section, location=excluded.location,
                        why_relevant=excluded.why_relevant, importance=excluded.importance,
-                       status=excluded.status, mastered_at=excluded.mastered_at""",
+                       status=excluded.status, mastered_at=excluded.mastered_at,
+                       status_changed_at=excluded.status_changed_at""",
                 ku.to_dict(),
             )
         return ku
@@ -238,13 +271,28 @@ class Store:
             rows = con.execute(query, params).fetchall()
         return [KnowledgeUnit.from_row(r) for r in rows]
 
-    def set_ku_status(self, ku_id: str, status: str) -> None:
-        mastered_at = now_iso() if status == "MASTERED" else None
+    def set_ku_status(self, ku_id: str, status: str) -> bool:
+        """Set the lifecycle status. Returns True when it actually changed."""
         with self.conn() as con:
+            row = con.execute("SELECT status FROM knowledge_units WHERE id = ?", (ku_id,)).fetchone()
+            if not row:
+                return False
+            if row["status"] == status:
+                return False
+            mastered_at = now_iso() if status == "MASTERED" else None
             con.execute(
-                "UPDATE knowledge_units SET status = ?, mastered_at = COALESCE(?, mastered_at) WHERE id = ?",
-                (status, mastered_at, ku_id),
+                """UPDATE knowledge_units
+                   SET status = ?, status_changed_at = ?, mastered_at = COALESCE(?, mastered_at)
+                   WHERE id = ?""",
+                (status, now_iso(), mastered_at, ku_id),
             )
+            con.execute(
+                "INSERT INTO events (kind, payload_json, created_at) VALUES (?, ?, ?)",
+                ("status_change",
+                 json.dumps({"ku_id": ku_id, "from": row["status"], "to": status}, ensure_ascii=False),
+                 now_iso()),
+            )
+        return True
 
     def link_kus(self, ku_id: str, related: Iterable[str]) -> None:
         with self.conn() as con:
@@ -268,18 +316,21 @@ class Store:
             con.execute(
                 """INSERT INTO cards
                    (id, ku_id, question, answer, card_type, options_json, correct_option,
-                    explanation, cognitive_level, error_target, tags_json, generation,
-                    anki_note_id, retired, created_at)
+                    explanation, cognitive_level, error_target, learning_objective, difficulty,
+                    suspended, tags_json, generation, anki_note_id, retired, created_at)
                    VALUES
                    (:id, :ku_id, :question, :answer, :card_type, :options_json, :correct_option,
-                    :explanation, :cognitive_level, :error_target, :tags_json, :generation,
-                    :anki_note_id, :retired, :created_at)
+                    :explanation, :cognitive_level, :error_target, :learning_objective, :difficulty,
+                    :suspended, :tags_json, :generation, :anki_note_id, :retired, :created_at)
                    ON CONFLICT(id) DO UPDATE SET
                        question=excluded.question, answer=excluded.answer,
                        card_type=excluded.card_type, options_json=excluded.options_json,
                        correct_option=excluded.correct_option, explanation=excluded.explanation,
                        cognitive_level=excluded.cognitive_level,
-                       error_target=excluded.error_target, tags_json=excluded.tags_json,
+                       error_target=excluded.error_target,
+                       learning_objective=excluded.learning_objective,
+                       difficulty=excluded.difficulty, suspended=excluded.suspended,
+                       tags_json=excluded.tags_json,
                        generation=excluded.generation, anki_note_id=excluded.anki_note_id,
                        retired=excluded.retired""",
                 card.to_row(),
@@ -408,12 +459,15 @@ class Store:
             con.execute("DELETE FROM study_plans WHERE ku_id = ? AND status = 'OPEN'", (plan.ku_id,))
             con.execute(
                 """INSERT INTO study_plans
-                   (ku_id, what, where_, why, how_json, next_level, error_types_json,
-                    priority, status, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (ku_id, what, where_, why, how_json, what_to_study, how_much, methods_json,
+                    gemini_prompt, gap_score, next_level, error_types_json, priority, status,
+                    created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     plan.ku_id, plan.what, plan.where, plan.why,
-                    json.dumps(plan.how, ensure_ascii=False), plan.next_level,
+                    json.dumps(plan.how, ensure_ascii=False), plan.what_to_study, plan.how_much,
+                    json.dumps(plan.methods, ensure_ascii=False), plan.gemini_prompt,
+                    plan.gap_score, plan.next_level,
                     json.dumps(plan.error_types, ensure_ascii=False), plan.priority,
                     plan.status, plan.created_at,
                 ),
@@ -431,6 +485,11 @@ class Store:
                 StudyPlan(
                     id=d["id"], ku_id=d["ku_id"], what=d["what"], where=d["where_"],
                     why=d["why"], how=json.loads(d["how_json"] or "[]"),
+                    what_to_study=d.get("what_to_study") or "",
+                    how_much=d.get("how_much") or "",
+                    methods=json.loads(d.get("methods_json") or "[]"),
+                    gemini_prompt=d.get("gemini_prompt") or "",
+                    gap_score=d.get("gap_score") or 0.0,
                     next_level=d["next_level"],
                     error_types=json.loads(d["error_types_json"] or "[]"),
                     priority=d["priority"], status=d["status"], created_at=d["created_at"],
@@ -493,4 +552,6 @@ class Store:
                 "reviews": one("SELECT COUNT(*) FROM reviews"),
                 "open_plans": one("SELECT COUNT(*) FROM study_plans WHERE status='OPEN'"),
                 "notion_pages": one("SELECT COUNT(*) FROM notion_exports"),
+                "weak": one("SELECT COUNT(*) FROM knowledge_units WHERE status IN ('WEAK','RELEARNING')"),
+                "archived": one("SELECT COUNT(*) FROM knowledge_units WHERE status='ARCHIVED'"),
             }

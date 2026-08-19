@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from secondbrain import diagnostics, ingest
-from secondbrain.ui import empty_state, get_store, page
+from secondbrain.ui import empty_state, get_store, nav_link, page
 
 page(
     "Performance",
@@ -28,7 +28,7 @@ if stats["reviews"] == 0:
         "No review history yet.",
         "Study in AnkiDroid, then press Sync on the 🔄 Sync page to bring your answers back.",
     )
-    st.page_link("pages/2_🔄_Sync.py", label="Go to Sync", icon="🔄")
+    nav_link("pages/2_🔄_Sync.py", "Go to Sync", "🔄")
     st.stop()
 
 reviews = store.list_reviews()

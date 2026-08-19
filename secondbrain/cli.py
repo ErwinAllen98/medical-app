@@ -8,6 +8,7 @@
     python -m secondbrain.cli push-anki
     python -m secondbrain.cli export-apkg
     python -m secondbrain.cli import-reviews reviews.csv
+    python -m secondbrain.cli report weekly
     python -m secondbrain.cli mastery
     python -m secondbrain.cli notion
     python -m secondbrain.cli seed-demo
@@ -39,6 +40,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("export-apkg")
     imp = sub.add_parser("import-reviews")
     imp.add_argument("path")
+    rep = sub.add_parser("report", help="daily/weekly/monthly/yearly analysis bundle")
+    rep.add_argument("scale", nargs="?", default="weekly",
+                     choices=["daily", "weekly", "monthly", "yearly"])
     sub.add_parser("mastery")
     sub.add_parser("notion")
     sub.add_parser("seed-demo")
@@ -100,6 +104,12 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "import-reviews":
         with open(args.path, encoding="utf-8") as fh:
             print(json.dumps(ingest.import_csv(store, fh.read()), indent=2))
+
+    elif args.command == "report":
+        from . import reports
+
+        bundle = reports.run_analysis(store, scale=args.scale)
+        print(reports.bundle_markdown(store, bundle))
 
     elif args.command == "mastery":
         for report in mastery.evaluate_all(store):

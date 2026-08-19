@@ -56,7 +56,11 @@ NOTION .................... mastered knowledge + the weakness history behind it
 | 4 Sensor | `secondbrain/colpkg.py` | Reads the review log straight out of an AnkiDroid export (`.colpkg`/`.apkg`, incl. zstd format) |
 | 4 Sensor | `secondbrain/ingest.py` | Flexible CSV import of Anki revlog, local FSRS recomputation (`fsrs` package) |
 | 5–6 Diagnosis | `secondbrain/diagnostics.py`, `secondbrain/claude.py` | Cumulative Weakness Profile, failure signatures, heuristic error hypotheses; longitudinal dossier + Claude prompt/parser |
-| 7–8 Repair | `secondbrain/restudy.py` | Review targets inside the source and WHAT→WHERE→WHY→HOW plans |
+| 6 Scoring | `secondbrain/diagnostics.py` | **Knowledge-Gap Score** = frequency × severity × recency × retrieval difficulty × low stability, ranked as Priority 1…N |
+| 7–8 Repair | `secondbrain/prescription.py` | **Learning Prescription** (WHAT · WHY · WHERE · WHAT TO STUDY · HOW · HOW MUCH) **and the ready-to-paste NotebookLM prompt that closes the loop** |
+| 7–8 Repair | `secondbrain/restudy.py` | Locating the fix inside the source |
+| 11 Lifecycle | `secondbrain/lifecycle.py` | UNSEEN → LEARNING → WEAK → RELEARNING → STABLE → MASTERED → ARCHIVED, with reactivation on decline |
+| — Analysis | `secondbrain/reports.py` | Daily / weekly / monthly / yearly analysis and the five deliverables (gap report, prescription, NotebookLM prompt, Anki update plan, mastery status) |
 | 9–10 Re-test | `secondbrain/adaptive.py` | New questions only (old stems passed as forbidden), dynamic cognitive level |
 | 11 Mastery | `secondbrain/mastery.py` | Six explicit criteria; nothing is "mastered" on one correct answer |
 | 12 Archive | `secondbrain/notion.py` | Notion pages incl. *my historical weakness* and *how it was resolved*; Markdown fallback |
@@ -76,6 +80,26 @@ Plus detected signatures: repeated failure, knowledge gap, unstable retention, *
 `L1 source & recall → L2 concept → L3 discrimination/boundaries → L4 clinical application → L5 integrated reasoning`
 
 Difficulty adapts: a shaky lower layer pulls you back down; a solid layer pushes you up.
+
+### The loop actually closes
+
+Claude (or the built-in analysis) does not stop at “review SGLT2 inhibitors”. It writes the prompt
+that goes **back into NotebookLM**:
+
+```
+LEARNING TARGET / KNOWLEDGE GAP / ERROR TYPE / SOURCE / SOURCE LOCATION /
+LEARNING OBJECTIVE / STUDY DOSE / TASK: study only to close this gap …
+```
+
+so the next learning material is generated for that gap alone — minimum necessary learning,
+maximum knowledge gain.
+
+### Lifecycle
+
+`UNSEEN → LEARNING → WEAK → RELEARNING → STABLE → MASTERED → ARCHIVED`
+
+Archiving is never permanent: a decline on an archived unit **reactivates** it into RELEARNING, and
+archived knowledge keeps being reviewed by Anki.
 
 ### Mastery criterion
 
@@ -156,6 +180,7 @@ python -m secondbrain.cli plans            # today's targeted re-study plans
 python -m secondbrain.cli sync             # AnkiWeb round trip (push cards, pull answers)
 python -m secondbrain.cli push-anki        # transfer new cards over AnkiConnect
 python -m secondbrain.cli import-reviews reviews.csv
+python -m secondbrain.cli report weekly    # gap report + prescriptions + Anki plan + statuses
 python -m secondbrain.cli mastery          # who is close, what is missing
 python -m secondbrain.cli notion           # archive mastered units
 ```
@@ -171,7 +196,7 @@ python -m secondbrain.cli notion           # archive mastered units
 | 🔄 Sync | AnkiWeb sync · AnkiDroid file bridge · AnkiConnect · CSV |
 | 📈 Performance | Daily load, lapse rate, per-unit stability, local FSRS state |
 | 🔍 Diagnosis | Cumulative Weakness Profile + Claude's diagnostic engine + the taxonomy |
-| 🎯 Re-study | WHAT → WHERE → WHY → HOW, with what to ignore for now |
+| 💊 Prescription | The six-part prescription + the NotebookLM prompt that sends the loop back to the source |
 | 🔁 Adaptive Questions | New formulations at the weakest cognitive layer |
 | 🏆 Mastery & Notion | Six-criterion mastery check and the Notion archive |
 

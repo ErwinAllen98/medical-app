@@ -148,6 +148,15 @@ def copy_button(text: str, label: str = "📋 Copy the prompt", key: str = "") -
     )
 
 
+def nav_link(path: str, label: str, icon: str = "", container=None) -> None:
+    """st.page_link that degrades gracefully when the page registry is unavailable."""
+    target = container or st
+    try:
+        target.page_link(path, label=label, icon=icon)
+    except Exception:
+        target.caption(f"{icon} {label}")
+
+
 def open_notebooklm() -> None:
     st.link_button("🔗 Open NotebookLM", "https://notebooklm.google.com/", width="stretch")
 

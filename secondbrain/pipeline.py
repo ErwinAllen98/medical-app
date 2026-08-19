@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from . import anki as anki_mod
-from . import diagnostics, mastery, restudy
+from . import diagnostics, lifecycle, mastery, reports
 from .models import Card, KnowledgeUnit, Review, Source
 from .store import Store
 
@@ -25,6 +25,9 @@ class CycleReport:
     hypotheses: int = 0
     plans: int = 0
     promoted: list[str] = field(default_factory=list)
+    transitions: list[str] = field(default_factory=list)
+    reactivated: list[str] = field(default_factory=list)
+    top_gap: str = ""
     notes: list[str] = field(default_factory=list)
 
 
@@ -42,8 +45,14 @@ def run_cycle(store: Store, pull_from_anki: bool = True) -> CycleReport:
     report.weak_units = len(profile.weak_units)
     report.patterns = len(profile.patterns)
     report.hypotheses = diagnostics.persist_hypotheses(store, profile)
-    report.plans = len(restudy.generate_plans(store, profile))
-    report.promoted = [r.label for r in mastery.sweep(store)]
+
+    bundle = reports.run_analysis(store, scale="daily")
+    report.plans = len(bundle.prescriptions)
+    report.transitions = [f"{t.label}: {t.old} → {t.new}" for t in bundle.transitions]
+    report.reactivated = bundle.window.reactivated
+    report.promoted = [r.label for r in mastery.evaluate_all(store) if r.mastered]
+    if bundle.gaps:
+        report.top_gap = f"{bundle.gaps[0].label} (gap {bundle.gaps[0].gap_score:.1f})"
 
     store.log_event("cycle", {
         "pulled": report.pulled_reviews, "weak": report.weak_units,

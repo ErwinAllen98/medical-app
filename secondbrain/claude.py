@@ -13,7 +13,7 @@ from .diagnostics import WeaknessProfile
 from .llm import extract_json
 from .models import Diagnosis, StudyPlan, now_iso
 from .store import Store
-from .taxonomy import COGNITIVE_LEVELS, ERROR_TYPES
+from .taxonomy import COGNITIVE_LEVELS, ERROR_TYPES, LEARNING_METHODS, methods_for
 
 RESPONSE_SCHEMA = {
     "diagnoses": [
@@ -30,13 +30,18 @@ RESPONSE_SCHEMA = {
                 "what_to_read": "string — the exact paragraph/table/algorithm to reread",
                 "why_this_section": "string",
             },
-            "study_plan": {
+            "learning_prescription": {
                 "what": "string — what exactly is not known",
-                "why": "string — why it is not known",
-                "how": ["3-6 concrete instructions for the re-reading session"],
+                "why": "string — why the gap exists and why it matters clinically",
+                "what_to_study": "string — the concept/values to relearn, nothing more",
+                "how": ["3-6 concrete instructions for the study session"],
+                "how_much": "string — the minimum dose that closes this gap (e.g. 'one table, 6 minutes')",
+                "methods": ["READING | CONCEPT_EXPLANATION | COMPARISON | CLINICAL_CASE | MCQ | CLOZE | RETRIEVAL_PRACTICE | SPACED_REPETITION"],
                 "ignore_for_now": ["sections that are a distraction right now"],
-                "next_level": "integer 1-5 — the cognitive level the next questions should target",
+                "next_level": "integer 1-5 — the cognitive level the reassessment should target",
+                "learning_objective": "string — what I must be able to do after studying",
             },
+            "gemini_notebook_prompt": "string — a ready-to-paste NotebookLM prompt using the LEARNING TARGET / KNOWLEDGE GAP / ERROR TYPE / SOURCE / SOURCE LOCATION / LEARNING OBJECTIVE / TASK structure",
         }
     ],
     "patterns": [
@@ -49,6 +54,13 @@ RESPONSE_SCHEMA = {
         }
     ],
     "priority_order": ["ku_id, most urgent first"],
+    "anki_update_plan": {
+        "suspend": [{"ku_id": "...", "reason": "leech / superseded"}],
+        "retire": [{"ku_id": "...", "reason": "ambiguous or badly written card"}],
+        "new_cards_needed": [{"ku_id": "...", "what_to_test": "...", "card_type": "BASIC | CLOZE | MCQ"}],
+        "tags": [{"ku_id": "...", "add": ["..."], "remove": ["..."]}],
+    },
+    "mastery_status": [{"ku_id": "...", "status": "UNSEEN | LEARNING | WEAK | RELEARNING | STABLE | MASTERED | ARCHIVED"}],
 }
 
 
@@ -57,6 +69,8 @@ class ClaudeDiagnosis:
     diagnoses: list[dict] = field(default_factory=list)
     patterns: list[dict] = field(default_factory=list)
     priority_order: list[str] = field(default_factory=list)
+    anki_update_plan: dict = field(default_factory=dict)
+    mastery_status: list[dict] = field(default_factory=list)
     raw: str = ""
 
 
@@ -171,6 +185,24 @@ RULES
 3. Targeted re-reading only. Never say "review SGLT2 inhibitors" — say which
    table, algorithm or paragraph, and what to look for inside it.
 4. Rank by clinical risk × severity, not by number of failed cards.
+5. Prescribe the MINIMUM NECESSARY LEARNING: never send me back to a whole chapter.
+   Say exactly what to read, by which method, and how long it should take.
+6. Write the NotebookLM prompt yourself, in this exact shape, so I can paste it
+   straight into the notebook that holds the source:
+
+     LEARNING TARGET: …
+     KNOWLEDGE GAP: …
+     ERROR TYPE: …
+     SOURCE: …
+     SOURCE LOCATION: …
+     LEARNING OBJECTIVE: …
+     TASK: I am studying only to close this gap. Please (1) find the relevant part of
+     the source, (2) extract only what is needed, (3) relate it to the knowledge unit,
+     (4) point out discriminating features and exceptions, (5) end with retrieval-practice
+     questions, (6) add nothing from outside the source.
+
+You must return all five deliverables: the knowledge-gap report (diagnoses), the
+learning prescription, the NotebookLM prompt, the Anki update plan, and the mastery status.
 
 PERFORMANCE DOSSIER
 {json.dumps(dossier, ensure_ascii=False, indent=2, default=str)}
@@ -187,6 +219,8 @@ def parse_diagnosis(raw: str | dict) -> ClaudeDiagnosis:
         diagnoses=data.get("diagnoses") or [],
         patterns=data.get("patterns") or [],
         priority_order=data.get("priority_order") or [],
+        anki_update_plan=data.get("anki_update_plan") or {},
+        mastery_status=data.get("mastery_status") or [],
         raw=raw if isinstance(raw, str) else json.dumps(data, ensure_ascii=False),
     )
 
@@ -222,7 +256,7 @@ def apply_diagnosis(store: Store, result: ClaudeDiagnosis, profile: WeaknessProf
             saved_diag += 1
 
         target = item.get("review_target") or {}
-        plan_data = item.get("study_plan") or {}
+        plan_data = item.get("learning_prescription") or item.get("study_plan") or {}
         where_bits = [b for b in (target.get("chapter"), target.get("section"), target.get("location")) if b]
         ku = store.get_ku(ku_id)
         source_title = store.source_titles().get(ku.source_id, "") if ku else ""
@@ -245,6 +279,22 @@ def apply_diagnosis(store: Store, result: ClaudeDiagnosis, profile: WeaknessProf
             unit_priority = up.priority if up else 0.0
         priority = unit_priority + (100 - order.get(ku_id, 99))
 
+        from .prescription import build_gemini_prompt
+
+        methods = [str(m).strip().upper() for m in (plan_data.get("methods") or [])]
+        methods = [m for m in methods if m in LEARNING_METHODS] or methods_for(errors)
+        how_much = str(plan_data.get("how_much") or "").strip() or "Only the identified section."
+        objective = str(plan_data.get("learning_objective") or "").strip()
+        gemini_prompt = str(item.get("gemini_notebook_prompt") or "").strip()
+        if not gemini_prompt and ku:
+            gemini_prompt = build_gemini_prompt(
+                store, ku, errors,
+                str(plan_data.get("what") or why).strip(),
+                objective or f"Apply {ku.subtopic or ku.topic} without a {errors[0].lower()}.",
+                how_much, methods,
+            )
+
+        gap = profile.by_id(ku_id) if profile else None
         store.save_plan(
             StudyPlan(
                 ku_id=ku_id,
@@ -252,13 +302,18 @@ def apply_diagnosis(store: Store, result: ClaudeDiagnosis, profile: WeaknessProf
                 where=where or "source location not specified",
                 why=str(plan_data.get("why") or why).strip(),
                 how=how,
+                what_to_study=str(plan_data.get("what_to_study") or "").strip(),
+                how_much=how_much,
+                methods=methods,
+                gemini_prompt=gemini_prompt,
+                gap_score=gap.gap_score if gap else 0.0,
                 next_level=next_level,
                 error_types=errors,
                 priority=round(priority, 3),
             )
         )
         saved_plans += 1
-        store.set_ku_status(ku_id, "REPAIRING")
+        store.set_ku_status(ku_id, "RELEARNING")
 
     store.log_event(
         "claude_diagnosis",

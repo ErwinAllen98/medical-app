@@ -128,3 +128,69 @@ def describe(error_type: str) -> str:
 
 def level_label(level: int) -> str:
     return COGNITIVE_LEVELS.get(int(level), COGNITIVE_LEVELS[1])["label"]
+
+
+# ---------------------------------------------------------------------------
+# 3. Topic / knowledge-unit lifecycle
+# ---------------------------------------------------------------------------
+
+STATUS_FLOW: list[str] = [
+    "UNSEEN",
+    "LEARNING",
+    "WEAK",
+    "RELEARNING",
+    "STABLE",
+    "MASTERED",
+    "ARCHIVED",
+]
+
+STATUSES: dict[str, dict[str, str]] = {
+    "UNSEEN": {"label": "Not started", "meaning": "Extracted from a source but never tested."},
+    "LEARNING": {"label": "Learning", "meaning": "Being tested; performance not yet settled."},
+    "WEAK": {"label": "Weak", "meaning": "A real knowledge gap: repeated or severe failure."},
+    "RELEARNING": {"label": "Relearning", "meaning": "A learning prescription is open; targeted re-study in progress."},
+    "STABLE": {"label": "Stable", "meaning": "Reliable lately, but not yet proven across time and formats."},
+    "MASTERED": {"label": "Mastered", "meaning": "All mastery criteria satisfied."},
+    "ARCHIVED": {"label": "Archived", "meaning": "Stored in the Notion knowledge archive; still reviewed by Anki."},
+}
+
+# Archive is never permanent: a decline sends the unit back into the loop.
+REACTIVATION_STATUS = "RELEARNING"
+
+# ---------------------------------------------------------------------------
+# 4. Learning methods a prescription can ask for (the HOW)
+# ---------------------------------------------------------------------------
+
+LEARNING_METHODS: dict[str, str] = {
+    "READING": "Read the exact passage/table in the source.",
+    "CONCEPT_EXPLANATION": "Have the mechanism explained, then restate it in your own words.",
+    "COMPARISON": "Build an explicit A-vs-B contrast table.",
+    "CLINICAL_CASE": "Work through a short vignette that forces the decision.",
+    "MCQ": "Answer multiple-choice items with plausible distractors.",
+    "CLOZE": "Cloze deletions for the exact values that must be retrievable.",
+    "RETRIEVAL_PRACTICE": "Closed-book recall before looking anything up.",
+    "SPACED_REPETITION": "Let Anki/FSRS re-test it over expanding intervals.",
+}
+
+# Which method attacks which error type first.
+ERROR_TO_METHODS: dict[str, list[str]] = {
+    "FACTUAL_ERROR": ["READING", "CLOZE", "RETRIEVAL_PRACTICE"],
+    "CONCEPT_ERROR": ["CONCEPT_EXPLANATION", "READING", "RETRIEVAL_PRACTICE"],
+    "DISCRIMINATION_ERROR": ["COMPARISON", "MCQ", "RETRIEVAL_PRACTICE"],
+    "EXCEPTION_ERROR": ["READING", "COMPARISON", "MCQ"],
+    "THRESHOLD_ERROR": ["CLOZE", "COMPARISON", "MCQ"],
+    "SEQUENCE_ERROR": ["READING", "CLINICAL_CASE", "RETRIEVAL_PRACTICE"],
+    "INDICATION_ERROR": ["CLINICAL_CASE", "MCQ", "READING"],
+    "CONTRAINDICATION_ERROR": ["COMPARISON", "CLINICAL_CASE", "MCQ"],
+    "MONITORING_ERROR": ["READING", "CLOZE", "CLINICAL_CASE"],
+    "MANAGEMENT_ERROR": ["CLINICAL_CASE", "CONCEPT_EXPLANATION", "MCQ"],
+}
+
+
+def methods_for(error_types: list[str]) -> list[str]:
+    out: list[str] = []
+    for err in error_types:
+        for method in ERROR_TO_METHODS.get(err, []):
+            if method not in out:
+                out.append(method)
+    return out[:4] or ["READING", "RETRIEVAL_PRACTICE"]

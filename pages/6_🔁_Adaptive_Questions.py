@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from secondbrain import adaptive, diagnostics
+from secondbrain import adaptive, diagnostics, lifecycle
 from secondbrain.llm import LLMError
 from secondbrain.taxonomy import COGNITIVE_LEVELS
 from secondbrain.ui import clear_bridge, empty_state, get_store, llm_bridge, page
@@ -113,7 +113,7 @@ if raw:
         if st.button("Add to the Second Brain (then push to Anki)", type="primary"):
             for card in cards:
                 store.upsert_card(card)
-            store.set_ku_status(ku_id, "CONSOLIDATING")
+            lifecycle.sync_statuses(store)
             store.log_event("requestion", {"ku_id": ku_id, "generation": generation, "cards": len(cards)})
             clear_bridge(f"requestion_{ku_id}_{generation}")
             st.success("Saved. Open the Anki page to transfer them.")
