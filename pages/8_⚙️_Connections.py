@@ -95,6 +95,11 @@ from secondbrain import backup  # noqa: E402
 if not backup.configured(settings):
     st.info("Add a GitHub token and a **private** repository above to switch this on.")
 else:
+    if backup.repo_is_public(settings):
+        st.error(
+            "⚠️ That backup repository is **public**. Your learning history would be readable by "
+            "anyone. Use a private repository."
+        )
     try:
         info = backup.remote_info(settings)
         st.write(

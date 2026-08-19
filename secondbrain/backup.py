@@ -56,15 +56,27 @@ def _url(s: Settings) -> str:
     return f"{API}/repos/{s.backup_repo}/contents/{s.backup_path}"
 
 
-def _request(method: str, url: str, s: Settings, **kwargs):
+def _request(method: str, url: str, s: Settings, extra_headers: dict | None = None, **kwargs):
     try:
         import requests
     except ImportError as exc:  # pragma: no cover
         raise BackupError("requests is not installed.") from exc
+    headers = {**_headers(s), **(extra_headers or {})}
     try:
-        return requests.request(method, url, headers=_headers(s), timeout=60, **kwargs)
+        return requests.request(method, url, headers=headers, timeout=60, **kwargs)
     except Exception as exc:
         raise BackupError(f"Could not reach GitHub: {exc}") from exc
+
+
+def repo_is_public(settings: Settings | None = None) -> bool | None:
+    """True/False when GitHub answers, None when we cannot tell."""
+    s = _settings(settings)
+    if not configured(s):
+        return None
+    resp = _request("GET", f"{API}/repos/{s.backup_repo}", s)
+    if resp.status_code >= 400:
+        return None
+    return not bool(resp.json().get("private"))
 
 
 def remote_info(settings: Settings | None = None) -> RemoteInfo:
@@ -118,8 +130,9 @@ def pull(settings: Settings | None = None, db_path: Path | None = None, overwrit
     if path.exists() and not overwrite:
         return {"restored": False, "reason": "a local database already exists"}
 
-    resp = _request("GET", _url(s), s, params={"ref": s.backup_branch},
-                    headers={**_headers(s), "Accept": "application/vnd.github.raw"})
+    resp = _request("GET", _url(s), s,
+                    extra_headers={"Accept": "application/vnd.github.raw"},
+                    params={"ref": s.backup_branch})
     if resp.status_code == 404:
         return {"restored": False, "reason": "no backup stored yet"}
     if resp.status_code >= 400:
