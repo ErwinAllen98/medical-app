@@ -151,7 +151,8 @@ class AnkiWebBridge:
                 out = col.sync_collection(auth, False)
             except Exception as exc:
                 raise AnkiWebError(f"Sync failed: {exc}") from exc
-
+            if out.new_endpoint:
+                auth.endpoint = out.new_endpoint
             result.server_message = out.server_message or ""
             required = out.required
 
