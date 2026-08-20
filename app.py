@@ -1,7 +1,8 @@
-"""Second Brain — closed-loop adaptive medical learning.
+"""Second Brain — one-page, phone-first.
 
-Home: the one question the system exists to answer —
-“given my real learning data, what is the single best thing to learn right now?”
+Two sections, zero jargon, big buttons:
+  1. کارت بساز  — build flashcards from NotebookLM
+  2. چی بلد نیستم — see what you don't know, get fix prompts
 
 Dr Erfan Alinejad Ghadi — Iran Medical Council No. 219890
 """
@@ -10,135 +11,255 @@ from __future__ import annotations
 
 import streamlit as st
 
-from secondbrain import diagnostics, lifecycle, pipeline, reports
-from secondbrain.taxonomy import STATUS_FLOW
-from secondbrain.ui import copy_button, empty_state, get_store, nav_link, open_notebooklm, page
+from secondbrain import simple
+from secondbrain.config import Settings
+from secondbrain.ui import copy_button, get_store
 
-page(
-    "Second Brain",
-    "Sources → NotebookLM → Anki/FSRS → gap detection → prescription → re-test → mastery → Notion",
-    "🧠",
+# ---------------------------------------------------------------------------
+# Page setup
+# ---------------------------------------------------------------------------
+
+st.set_page_config(
+    page_title="Second Brain · یک‌صفحه",
+    page_icon="🧠",
+    layout="centered",
+    initial_sidebar_state="collapsed",
 )
+
+# --- CSS: mobile-first, big buttons, single column ---
+st.markdown(
+    """
+<style>
+  .block-container {
+    padding-top: 1rem !important;
+    padding-bottom: 2rem !important;
+    padding-left: .8rem !important;
+    padding-right: .8rem !important;
+    max-width: 700px;
+  }
+  .stButton > button, .stDownloadButton > button {
+    min-height: 52px !important;
+    font-size: 1.1rem !important;
+    border-radius: 12px !important;
+    width: 100%;
+  }
+  .stTextInput input, .stTextArea textarea {
+    font-size: 17px !important;
+  }
+  /* hero */
+  .sb-hero {
+    background: linear-gradient(135deg, #14352b 0%, #1c5f4a 55%, #2c7a5f 100%);
+    color: #f6f4ef;
+    padding: 18px 22px;
+    border-radius: 14px;
+    margin-bottom: 20px;
+  }
+  .sb-hero h1 { margin: 0 0 4px 0; font-size: 1.4rem; }
+  .sb-hero p  { margin: 0; opacity: .85; font-size: .9rem; }
+  /* card */
+  .sb-card {
+    border: 1px solid #e6e2d9;
+    border-radius: 12px;
+    padding: 14px 16px;
+    background: #fffdf9;
+    margin-bottom: 14px;
+  }
+  /* section divider */
+  .sb-section {
+    border-top: 3px solid #1c5f4a;
+    padding-top: 18px;
+    margin-top: 28px;
+  }
+  /* weak spot card */
+  .ws-label   { font-weight: 700; font-size: 1.05rem; color: #1f2933; }
+  .ws-summary { color: #9e1030; font-weight: 600; }
+  .ws-source  { color: #4b5563; font-size: .88rem; }
+  .ws-time    { color: #6b7280; font-size: .82rem; }
+  @media (max-width: 640px) {
+    .sb-hero h1 { font-size: 1.15rem; }
+    .sb-hero p  { font-size: .8rem; }
+  }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# --- Hero ---
+st.markdown(
+    "<div class='sb-hero'><h1>🧠 Second Brain</h1>"
+    "<p>کارت بساز از NotebookLM · ببین چی بلد نیستی · درستش کن</p></div>",
+    unsafe_allow_html=True,
+)
+
+# --- Apply secrets if available ---
+try:
+    from secondbrain.secrets_store import apply_to_env
+    apply_to_env()
+except Exception:
+    pass
 
 store = get_store()
-stats = store.stats()
 
-# ---------------------------------------------------------------------------
-if stats["knowledge_units"] == 0:
-    empty_state(
-        "The brain is empty.",
-        "Add a source on the Capture page — or load the demo collection to watch the loop run.",
-    )
-    if st.button("Load the demo collection", type="primary", width="stretch"):
-        pipeline.seed_demo(store)
-        pipeline.run_cycle(store, pull_from_anki=False)
-        st.rerun()
-    st.stop()
+# ===================================================================
+#  SECTION 1 — کارت بساز
+# ===================================================================
 
-profile = diagnostics.build_profile(store)
-plans = sorted(store.list_plans("OPEN"), key=lambda p: p.gap_score, reverse=True)
+st.markdown("## 🃏 کارت بساز")
 
-# ---------------------------------------------------------------------------
-# 1. The answer to the only question that matters
-# ---------------------------------------------------------------------------
-st.subheader("👉 Learn this right now")
-
-if plans:
-    plan = plans[0]
-    ku = store.get_ku(plan.ku_id)
-    st.markdown(
-        f"<div class='sb-card'><b>{ku.label if ku else plan.ku_id}</b>"
-        f"<span class='sb-tag'>gap {plan.gap_score:.1f}</span>"
-        f"<span class='sb-tag'>{', '.join(plan.error_types) or 'unclassified'}</span><br><br>"
-        f"<b>What:</b> {plan.what}<br><br>"
-        f"<b>Where:</b> {plan.where.splitlines()[0]}<br><br>"
-        f"<b>How much:</b> {plan.how_much or 'only the identified section'}</div>",
-        unsafe_allow_html=True,
-    )
-    if plan.gemini_prompt:
-        copy_button(plan.gemini_prompt, label="📋 Copy the NotebookLM prompt", key="home")
-        open_notebooklm()
-    nav_link("pages/5_💊_Prescription.py", "Open the full prescription", "💊")
-else:
-    top = next((u for u in profile.top(1)), None)
-    if top and top.gap_score > 0:
-        st.info(f"Weakest area: **{top.label}** (gap {top.gap_score:.1f}) — run the loop to get a prescription.")
-    else:
-        st.success("No open knowledge gap. Keep reviewing in Anki and sync your answers back.")
-
-# ---------------------------------------------------------------------------
-# 2. One button. Nothing runs on a schedule — the loop turns when you tap this.
-# ---------------------------------------------------------------------------
-if st.button("🔄 Sync", type="primary", width="stretch"):
-    with st.spinner("Fetching your answers, analysing, prescribing, backing up…"):
-        report = pipeline.full_sync(store)
-    st.success(
-        f"{report.answers_pulled} answers in · {report.cards_pushed} cards out · "
-        f"{report.prescriptions} prescriptions"
-        + (" · backed up ✅" if report.backed_up else "")
-    )
-    if report.next_action:
-        st.info(f"👉 Next: {report.next_action}")
-    for label in report.reactivated:
-        st.warning(f"♻️ Reactivated after a decline: {label}")
-    for step in report.steps:
-        st.caption(step)
-    for problem in report.problems:
-        st.warning(problem)
-    st.rerun()
-st.caption(
-    "Nothing runs in the background: the loop advances only when you tap Sync — "
-    "no server, no computer left on."
+topic = st.text_input(
+    "موضوع",
+    placeholder="مثلاً: SGLT2 inhibitor thresholds in CKD",
+    key="simple_topic",
 )
 
-# ---------------------------------------------------------------------------
-# 3. Where everything stands
-# ---------------------------------------------------------------------------
-counts = lifecycle.counts(store)
-cols = st.columns(len(STATUS_FLOW))
-for col, status in zip(cols, STATUS_FLOW):
-    col.metric(status[:5].title(), counts.get(status, 0), help=status)
+if topic:
+    prompt_text = simple.study_prompt(topic)
+    copy_button(prompt_text, label="📋 کپی پرامپت — پیست کن تو NotebookLM", key="copy_study")
+    st.link_button("🔗 باز کردن NotebookLM", "https://notebooklm.google.com/", use_container_width=True)
 
-nav1, nav2, nav3 = st.columns(3)
-nav_link("pages/1_📚_Sources.py", "Capture", "📚", nav1)
-nav_link("pages/2_🔄_Sync.py", "Sync", "🔄", nav2)
-nav_link("pages/4_🔍_Diagnosis.py", "Gaps", "🔍", nav3)
-nav4, nav5, nav6 = st.columns(3)
-nav_link("pages/5_💊_Prescription.py", "Prescription", "💊", nav4)
-nav_link("pages/6_🔁_Adaptive_Questions.py", "Re-test", "🔁", nav5)
-nav_link("pages/7_🏆_Mastery_&_Notion.py", "Mastery", "🏆", nav6)
-nav_link("pages/8_⚙️_Connections.py", "Connections — add your API keys", "⚙️")
+st.markdown("---")
 
-# ---------------------------------------------------------------------------
-# 4. Detail, kept out of the way
-# ---------------------------------------------------------------------------
-with st.expander("📱 How the loop works from your phone"):
-    st.markdown(
-        """
-1. **Capture** — copy the prompt, paste it into NotebookLM, paste the JSON back.
-2. **Sync** — one tap; the cards land in AnkiDroid through AnkiWeb.
-3. **Study** — Anki + FSRS, as usual.
-4. **Sync** again — your answers come back here.
-5. **Gaps → Prescription** — what you don't know, why, where to fix it, how much to read.
-6. **Re-test** — new questions on the same weakness, until it is mastered.
-"""
-    )
+reply = st.text_area(
+    "📋 جواب NotebookLM رو اینجا پیست کن",
+    height=220,
+    placeholder='JSON یا جدول | سوال | جواب | یا خطوط Q:/A:',
+    key="paste_reply",
+)
 
-with st.expander("🔴 Patterns across your failures"):
-    if not profile.patterns:
-        st.caption("No cross-card pattern detected yet.")
-    for p in profile.patterns[:5]:
-        st.markdown(f"- {p.narrative}")
+if st.button("🚀 بساز و بفرست به آنکی", type="primary", use_container_width=True, disabled=not reply.strip()):
+    with st.spinner("در حال پردازش…"):
+        parsed = simple.parse_reply(reply)
 
-with st.expander("🗓 Reports"):
-    scale = st.radio("Scale", list(reports.WINDOWS), horizontal=True, index=1, key="home_scale")
-    w = reports.window_report(store, scale, profile)
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Reviews", w.reviews)
-    c2.metric("Lapse rate", f"{w.lapse_rate:.0%}")
-    c3.metric("Knowledge debt", w.knowledge_debt)
-    nav_link("pages/4_🔍_Diagnosis.py", "Full report", "🗓")
+        if not parsed.ok:
+            st.error(parsed.raw_error)
+            st.stop()
 
-with st.expander("Recent activity"):
-    for event in store.recent_events(12):
-        st.markdown(f"`{event['created_at'][:16]}` **{event['kind']}** — {event['payload']}")
+        # Save cards to the store
+        result = simple.save_cards(store, parsed)
+        cards_saved = result.get("cards_saved", 0)
+
+        if cards_saved == 0:
+            st.warning("هیچ کارتی ذخیره نشد. فرمت پیست رو چک کن.")
+            st.stop()
+
+        st.success(f"✅ {cards_saved} کارت ذخیره شد!")
+
+        # --- Push to AnkiWeb bridge ---
+        anki_msg = ""
+        try:
+            from secondbrain.ankiweb import AnkiWebBridge, library_available
+            settings = Settings.load()
+            if library_available() and settings.ankiweb_username and settings.ankiweb_password:
+                bridge = AnkiWebBridge(settings)
+                # Push the newly created cards
+                ku_id = result.get("ku_id", "")
+                if ku_id:
+                    new_cards = store.list_cards(ku_id=ku_id)
+                    pushed = bridge.push(store, cards=new_cards)
+                    bridge.sync()
+                    anki_msg = f"  → {pushed} کارت رفت تو آنکی"
+        except Exception as exc:
+            anki_msg = f"  ⚠️ آنکی: {exc}"
+
+        # --- Backup ---
+        backup_msg = ""
+        try:
+            from secondbrain.backup import configured, push as backup_push
+            if configured():
+                backup_push()
+                backup_msg = "  · بکاپ گرفته شد ✅"
+        except Exception:
+            pass
+
+        st.info(f"{cards_saved} کارت ساخته شد{anki_msg}{backup_msg}")
+        # Clear the text area so a new paste can start fresh
+        st.rerun()
+
+
+# ===================================================================
+#  SECTION 2 — چی بلد نیستم
+# ===================================================================
+
+st.markdown("<div class='sb-section'></div>", unsafe_allow_html=True)
+st.markdown("## 🎯 چی بلد نیستم")
+
+if st.button("📥 جواب‌هامو از آنکی بیار", type="primary", use_container_width=True):
+    with st.spinner("در حال خواندن جواب‌ها از آنکی…"):
+        pulled = 0
+        try:
+            from secondbrain.ankiweb import AnkiWebBridge, library_available
+            from secondbrain.anki import pull_reviews
+            settings = Settings.load()
+            # Try AnkiConnect first
+            try:
+                pulled = pull_reviews(store)
+            except Exception:
+                pass
+            # Then AnkiWeb bridge
+            if library_available() and settings.ankiweb_username and settings.ankiweb_password:
+                bridge = AnkiWebBridge(settings)
+                bridge.sync()
+                pulled += bridge.pull(store)
+        except Exception as exc:
+            st.warning(f"آنکی در دسترس نیست: {exc}")
+
+        if pulled:
+            st.success(f"{pulled} جواب جدید خونده شد.")
+        else:
+            st.info("جواب جدیدی نبود — یا آنکی وصل نیست یا هنوز جوابی ثبت نشده.")
+        st.rerun()
+
+# --- Show weak spots ---
+spots = simple.weak_spots(store, limit=3)
+
+if not spots:
+    stats = store.stats()
+    if stats["reviews"] == 0:
+        st.markdown(
+            "<div class='sb-card'>هنوز جوابی از آنکی نیومده.<br>"
+            "اول کارت بساز، بعد تو آنکی جواب بده، بعد دکمه‌ی بالا رو بزن.</div>",
+            unsafe_allow_html=True,
+        )
+    elif stats["knowledge_units"] == 0:
+        st.markdown(
+            "<div class='sb-card'>هنوز کارتی نساختی.<br>"
+            "از بخش «کارت بساز» بالا شروع کن.</div>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.success("🎉 چیزی پیدا نشد که ضعف داشته باشی — ادامه بده!")
+else:
+    for i, spot in enumerate(spots):
+        st.markdown(
+            f"<div class='sb-card'>"
+            f"<div class='ws-label'>{spot.label}</div>"
+            f"<div class='ws-summary'>{spot.summary}</div>"
+            f"<div class='ws-source'>📖 {spot.source_hint}</div>"
+            f"<div class='ws-time'>⏱ {spot.time_estimate}</div>"
+            f"</div>",
+            unsafe_allow_html=True,
+        )
+        # Restudy prompt for this spot
+        rp = simple.restudy_prompt(
+            topic=spot.label,
+            where=spot.source_hint,
+            error_types=spot.error_types,
+        )
+        copy_button(
+            rp,
+            label=f"📋 کپی پرامپت رفع ضعف — {spot.label}",
+            key=f"copy_restudy_{i}",
+        )
+
+
+# ===================================================================
+#  Tiny sidebar — just stats, no jargon
+# ===================================================================
+with st.sidebar:
+    stats = store.stats()
+    st.markdown("### 🧠 Second Brain")
+    st.metric("کارت", stats["cards"])
+    st.metric("جواب", stats["reviews"])
+    st.metric("یاد گرفته", stats["mastered"])
+    st.divider()
+    st.caption("Dr Erfan Alinejad Ghadi · ایران · شماره پروانه ۲۱۹۸۹۰")
