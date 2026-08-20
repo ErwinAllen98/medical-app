@@ -88,7 +88,7 @@ with tab_claude:
             st.json(dossier, expanded=False)
 
         prompt = claude.build_diagnostic_prompt(dossier)
-        raw = llm_bridge(prompt, key="claude_diag", provider="claude", label="Diagnose with Claude")
+        raw = llm_bridge(prompt, key="claude_diag", provider="claude", label="Diagnose with Gemini")
 
         if raw:
             try:
