@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+data/
+*.apkg
+.DS_Store
+
+# secrets: written by the Connections page, never committed
+.streamlit/secrets*.toml
+!.streamlit/secrets.toml.example

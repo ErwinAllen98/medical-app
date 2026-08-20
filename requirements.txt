@@ -1,3 +1,9 @@
-streamlit
-google-generativeai
-fsrs
+streamlit>=1.49
+google-genai>=1.0
+requests>=2.31
+fsrs>=5.0
+genanki>=0.13
+pandas>=2.0
+anki>=24.6
+protobuf>=6.31.1  # anki's generated code needs >=6.31; keep google-generativeai uninstalled
+zstandard>=0.22
