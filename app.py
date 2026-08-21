@@ -1,9 +1,9 @@
 """Second Brain — one-page, phone-first.
 
 Three sections, zero jargon, big buttons:
-  1. کارت‌سازی — build flashcards from NotebookLM
-  2. ضعف‌ها — Anki lapses + gaps found in chat analysis
-  3. تحلیل چت با NotebookLM — check a conversation against your sources
+  1. Cards — build flashcards from NotebookLM
+  2. Weaknesses — Anki lapses + gaps found in chat analysis
+  3. Chat analysis — check a conversation against your sources
 
 Advanced pages live in ``advanced/`` so Streamlit does not auto-load them.
 
@@ -25,7 +25,7 @@ from secondbrain.ui import copy_button, get_store
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Second Brain · یک‌صفحه",
+    page_title="Second Brain",
     page_icon="🧠",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -91,7 +91,7 @@ st.markdown(
 
 st.markdown(
     "<div class='sb-hero'><h1>🧠 Second Brain</h1>"
-    "<p>کارت‌سازی · ضعف‌ها · تحلیل چت با NotebookLM</p></div>",
+    "<p>Cards · Weaknesses · Chat analysis with NotebookLM</p></div>",
     unsafe_allow_html=True,
 )
 
@@ -121,7 +121,7 @@ if banner:
 # ---------------------------------------------------------------------------
 
 def _anki_and_backup(store, ku_id: str) -> str:
-    """Best-effort push of newly saved cards. Returns a short Persian suffix."""
+    """Best-effort push of newly saved cards. Returns a short status suffix."""
     bits: list[str] = []
     try:
         from secondbrain.ankiweb import AnkiWebBridge, library_available
@@ -133,23 +133,23 @@ def _anki_and_backup(store, ku_id: str) -> str:
             pushed = bridge.push(store, cards=cards) if cards else 0
             bridge.sync()
             if pushed:
-                bits.append(f" → {pushed} کارت رفت تو آنکی")
+                bits.append(f" → {pushed} cards sent to Anki")
     except Exception as exc:
-        bits.append(f"  ⚠️ آنکی: {exc}")
+        bits.append(f"  ⚠️ Anki: {exc}")
 
     try:
         from secondbrain.backup import configured, push as backup_push
 
         if configured():
             backup_push()
-            bits.append("  · بکاپ گرفته شد ✅")
+            bits.append("  · backup saved")
     except Exception:
         pass
     return "".join(bits)
 
 
 def _show_spot(spot: simple.WeakSpot, key_prefix: str, index: int) -> None:
-    origin = "از تحلیل چت" if spot.origin == "chat" else "از آنکی"
+    origin = "From chat analysis" if spot.origin == "chat" else "From Anki"
     st.markdown(
         f"<div class='sb-card'>"
         f"<div class='ws-origin'>{html.escape(origin)}</div>"
@@ -167,7 +167,7 @@ def _show_spot(spot: simple.WeakSpot, key_prefix: str, index: int) -> None:
     )
     copy_button(
         rp,
-        label=f"📋 کپی پرامپت رفع ضعف — {spot.label}",
+        label=f"📋 Copy restudy prompt — {spot.label}",
         key=f"{key_prefix}_{index}",
     )
 
@@ -177,28 +177,24 @@ def _show_spot(spot: simple.WeakSpot, key_prefix: str, index: int) -> None:
 # ===================================================================
 
 tab_cards, tab_weak, tab_chat = st.tabs(
-    ["🃏 کارت‌سازی", "🎯 ضعف‌ها", "💬 تحلیل چت"]
+    ["🃏 Cards", "🎯 Weaknesses", "💬 Chat analysis"]
 )
 
 
 # -------------------------------------------------------------------
-#  1. کارت‌سازی
+#  1. Cards
 # -------------------------------------------------------------------
 with tab_cards:
-    st.markdown("## 🃏 کارت‌سازی")
-    st.caption("موضوع بده → پرامپت رو تو NotebookLM پیست کن → جواب رو برگردون → کارت بره آنکی.")
+    st.markdown("## 🃏 Cards")
+    st.caption("Enter a topic → paste the prompt into NotebookLM → paste the reply → send cards to Anki.")
 
-    topic = st.text_input(
-        "موضوع",
-        placeholder="مثلاً: SGLT2 inhibitor thresholds in CKD",
-        key="simple_topic",
-    )
+    topic = st.text_input("Topic", key="simple_topic")
 
     if topic:
         prompt_text = simple.study_prompt(topic)
-        copy_button(prompt_text, label="📋 کپی پرامپت — پیست کن تو NotebookLM", key="copy_study")
+        copy_button(prompt_text, label="📋 Copy prompt — paste into NotebookLM", key="copy_study")
         st.link_button(
-            "🔗 باز کردن NotebookLM",
+            "🔗 Open NotebookLM",
             "https://notebooklm.google.com/",
             use_container_width=True,
         )
@@ -206,20 +202,19 @@ with tab_cards:
     st.markdown("---")
 
     reply = st.text_area(
-        "📋 جواب NotebookLM رو اینجا پیست کن",
+        "📋 Paste the NotebookLM reply",
         height=220,
-        placeholder="JSON یا جدول | سوال | جواب | یا خطوط Q:/A:",
         key="paste_reply",
     )
 
     if st.button(
-        "🚀 بساز و بفرست به آنکی",
+        "🚀 Build and send to Anki",
         type="primary",
         use_container_width=True,
         disabled=not (reply or "").strip(),
         key="build_cards",
     ):
-        with st.spinner("در حال پردازش…"):
+        with st.spinner("Working…"):
             parsed = simple.parse_reply(reply)
 
         if not parsed.ok:
@@ -228,26 +223,26 @@ with tab_cards:
             result = simple.save_cards(store, parsed)
             cards_saved = result.get("cards_saved", 0)
             if cards_saved == 0:
-                st.warning("هیچ کارتی ذخیره نشد. فرمت پیست رو چک کن.")
+                st.warning("No cards were saved. Check the paste format.")
             else:
                 extra = _anki_and_backup(store, result.get("ku_id", ""))
                 st.session_state["banner"] = (
                     "success",
-                    f"✅ {cards_saved} کارت ذخیره شد!{extra}",
+                    f"✅ {cards_saved} cards saved.{extra}",
                 )
                 st.session_state["_reset_paste_reply"] = True
                 st.rerun()
 
 
 # -------------------------------------------------------------------
-#  2. ضعف‌ها
+#  2. Weaknesses
 # -------------------------------------------------------------------
 with tab_weak:
-    st.markdown("## 🎯 ضعف‌ها")
-    st.caption("جواب‌های آنکی + ضعف‌هایی که از تحلیل چت پیدا شدن.")
+    st.markdown("## 🎯 Weaknesses")
+    st.caption("Anki answers plus gaps found in chat analysis.")
 
-    if st.button("📥 جواب‌هامو از آنکی بیار", type="primary", use_container_width=True, key="pull_anki"):
-        with st.spinner("در حال خواندن جواب‌ها از آنکی…"):
+    if st.button("📥 Pull my Anki answers", type="primary", use_container_width=True, key="pull_anki"):
+        with st.spinner("Reading answers from Anki…"):
             pulled = 0
             try:
                 from secondbrain.anki import pull_reviews
@@ -263,14 +258,14 @@ with tab_weak:
                     bridge.sync()
                     pulled += bridge.pull(store)
             except Exception as exc:
-                st.warning(f"آنکی در دسترس نیست: {exc}")
+                st.warning(f"Anki is not available: {exc}")
 
             if pulled:
-                st.session_state["banner"] = ("success", f"{pulled} جواب جدید خونده شد.")
+                st.session_state["banner"] = ("success", f"{pulled} new answers imported.")
             else:
                 st.session_state["banner"] = (
                     "info",
-                    "جواب جدیدی نبود — یا آنکی وصل نیست یا هنوز جوابی ثبت نشده.",
+                    "No new answers — Anki may be disconnected, or nothing has been reviewed yet.",
                 )
             st.rerun()
 
@@ -281,18 +276,18 @@ with tab_weak:
         stats = store.stats()
         if stats["reviews"] == 0 and stats["knowledge_units"] == 0:
             st.markdown(
-                "<div class='sb-card'>هنوز کارتی نساختی و جوابی از آنکی نیومده.<br>"
-                "از بخش «کارت‌سازی» یا «تحلیل چت» شروع کن.</div>",
+                "<div class='sb-card'>No cards yet, and no Anki answers yet.<br>"
+                "Start in Cards or Chat analysis.</div>",
                 unsafe_allow_html=True,
             )
         elif stats["reviews"] == 0:
             st.markdown(
-                "<div class='sb-card'>هنوز جوابی از آنکی نیومده.<br>"
-                "اول کارت بساز، بعد تو آنکی جواب بده، بعد دکمه‌ی بالا رو بزن.</div>",
+                "<div class='sb-card'>No Anki answers yet.<br>"
+                "Build cards, review them in Anki, then tap the button above.</div>",
                 unsafe_allow_html=True,
             )
         else:
-            st.success("🎉 چیزی پیدا نشد که ضعف داشته باشی — ادامه بده!")
+            st.success("🎉 No weak spots found — keep going.")
     else:
         for i, spot in enumerate(spots):
             _show_spot(spot, "copy_restudy", i)
@@ -301,17 +296,17 @@ with tab_weak:
 
 
 # -------------------------------------------------------------------
-#  3. تحلیل چت با NotebookLM
+#  3. Chat analysis with NotebookLM
 # -------------------------------------------------------------------
 with tab_chat:
-    st.markdown("## 💬 تحلیل چت با NotebookLM")
+    st.markdown("## 💬 Chat analysis with NotebookLM")
     st.caption(
-        "چت NotebookLM، تلگرام، بحث کیس یا هر گفتگوی بالینی رو پیست کن. "
-        "NotebookLM فقط با منبع‌های خودت ادعاها رو چک می‌کنه، ضعف‌ها رو می‌گه و کارت می‌سازه."
+        "Paste a conversation. NotebookLM checks claims against your own sources, "
+        "lists gaps, and drafts cards."
     )
 
     uploaded = st.file_uploader(
-        "یا فایل متنی چت را آپلود کن",
+        "Or upload a text file of the chat",
         type=["txt", "md"],
         key="chat_file",
     )
@@ -319,28 +314,23 @@ with tab_chat:
         st.session_state["chat_paste"] = uploaded.getvalue().decode("utf-8", errors="replace")
 
     chat_text = st.text_area(
-        "چت رو اینجا پیست کن",
+        "Paste the chat",
         height=200,
-        placeholder="User: …\nNotebookLM: …\nیا کپی از تلگرام / بحث کیس",
         key="chat_paste",
     )
 
-    focus = st.text_input(
-        "تمرکز (اختیاری)",
-        placeholder="مثلاً: فقط آستانه‌های SGLT2 در CKD",
-        key="chat_focus",
-    )
+    focus = st.text_input("Focus (optional)", key="chat_focus")
 
     chat_ready = bool((chat_text or "").strip())
     if chat_ready:
         prompt_text = chat_analysis.analysis_prompt(chat_text, focus=focus or "")
         copy_button(
             prompt_text,
-            label="📋 کپی پرامپت تحلیل — پیست کن تو NotebookLM",
+            label="📋 Copy analysis prompt — paste into NotebookLM",
             key="copy_chat_prompt",
         )
         st.link_button(
-            "🔗 باز کردن NotebookLM",
+            "🔗 Open NotebookLM",
             "https://notebooklm.google.com/",
             use_container_width=True,
         )
@@ -348,14 +338,13 @@ with tab_chat:
     st.markdown("---")
 
     chat_reply = st.text_area(
-        "📋 جواب NotebookLM رو اینجا پیست کن",
+        "📋 Paste the NotebookLM reply",
         height=220,
-        placeholder='{"topic":"...","claims":[...],"gaps":[...],"cards":[...]}',
         key="chat_reply",
     )
 
     if st.button(
-        "🔎 تحلیل کن",
+        "🔎 Analyse",
         type="primary",
         use_container_width=True,
         disabled=not (chat_reply or "").strip(),
@@ -377,7 +366,7 @@ with tab_chat:
             "unclear": "#6b7280",
         }
         if parsed.topic:
-            st.markdown(f"**موضوع:** {html.escape(parsed.topic)}", unsafe_allow_html=True)
+            st.markdown(f"**Topic:** {html.escape(parsed.topic)}", unsafe_allow_html=True)
         if parsed.where:
             st.caption(f"📖 {parsed.where}")
         if parsed.summary:
@@ -387,7 +376,7 @@ with tab_chat:
             )
 
         if parsed.claims:
-            st.markdown("#### ادعاها")
+            st.markdown("#### Claims")
             for claim in parsed.claims:
                 color = _VERDICT_COLOR.get(claim.verdict, "#6b7280")
                 note = f"<div class='ws-time'>{html.escape(claim.note)}</div>" if claim.note else ""
@@ -398,14 +387,14 @@ with tab_chat:
                 )
                 st.markdown(
                     f"<div class='sb-card'>"
-                    f"<div class='claim-v' style='color:{color}'>{html.escape(claim.verdict_fa)}</div>"
+                    f"<div class='claim-v' style='color:{color}'>{html.escape(claim.verdict_label)}</div>"
                     f"<div>{html.escape(claim.text)}</div>"
                     f"{where}{note}</div>",
                     unsafe_allow_html=True,
                 )
 
         if parsed.gaps:
-            st.markdown("#### ضعف‌ها")
+            st.markdown("#### Gaps")
             for gap in parsed.gaps:
                 why = f"<div class='ws-summary'>{html.escape(gap.why)}</div>" if gap.why else ""
                 where = (
@@ -421,8 +410,8 @@ with tab_chat:
                 )
 
         if parsed.cards:
-            st.markdown(f"#### {len(parsed.cards)} کارت پیشنهادی")
-            with st.expander("پیش‌نمایش کارت‌ها"):
+            st.markdown(f"#### {len(parsed.cards)} suggested cards")
+            with st.expander("Preview cards"):
                 for card in parsed.cards:
                     st.markdown(f"**Q.** {card['q']}")
                     st.markdown(f"**A.** {card['a']}")
@@ -430,19 +419,19 @@ with tab_chat:
                     st.divider()
 
         if st.button(
-            "🚀 ذخیره کن و بفرست به آنکی",
+            "🚀 Save and send to Anki",
             type="primary",
             use_container_width=True,
             key="save_chat_analysis",
         ):
-            with st.spinner("در حال ذخیره…"):
+            with st.spinner("Saving…"):
                 result = chat_analysis.save_analysis(store, parsed)
             extra = _anki_and_backup(store, result.get("ku_id", ""))
             n = result.get("cards_saved", 0)
             g = result.get("gaps", 0)
             st.session_state["banner"] = (
                 "success",
-                f"✅ {n} کارت ذخیره شد · {g} ضعف ثبت شد{extra}",
+                f"✅ {n} cards saved · {g} gaps recorded{extra}",
             )
             st.session_state["_reset_chat_reply"] = True
             st.rerun()
@@ -454,9 +443,9 @@ with tab_chat:
 with st.sidebar:
     stats = store.stats()
     st.markdown("### 🧠 Second Brain")
-    st.metric("کارت", stats["cards"])
-    st.metric("جواب", stats["reviews"])
-    st.metric("یاد گرفته", stats["mastered"])
+    st.metric("Cards", stats["cards"])
+    st.metric("Reviews", stats["reviews"])
+    st.metric("Mastered", stats["mastered"])
     st.divider()
-    st.caption("صفحات پیشرفته در پوشه advanced/ هستن — این صفحه همان سه بخش است.")
-    st.caption("Dr Erfan Alinejad Ghadi · ایران · شماره پروانه ۲۱۹۸۹۰")
+    st.caption("Advanced pages live in the advanced/ folder.")
+    st.caption("Dr Erfan Alinejad Ghadi · Iran Medical Council No. 219890")

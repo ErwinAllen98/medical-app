@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass, field
 
 from .models import Card, Diagnosis, KnowledgeUnit, Source
-from .simple import KIND_TO_ERROR, WeakSpot, _ERROR_PERSIAN
+from .simple import KIND_TO_ERROR, WeakSpot, _ERROR_PLAIN
 from .store import Store
 
 # Keep the prompt pasteable from a phone clipboard.
@@ -28,11 +28,11 @@ CHAT_MAX_CHARS = 8000
 
 VERDICTS = ("supported", "unsupported", "unclear", "contradicted")
 
-VERDICT_FA: dict[str, str] = {
-    "supported": "منبع تأیید می‌کنه",
-    "unsupported": "منبع چیزی نمی‌گه",
-    "unclear": "مبهمه",
-    "contradicted": "منبع خلافشه",
+VERDICT_LABEL: dict[str, str] = {
+    "supported": "Supported by the source",
+    "unsupported": "Not in the source",
+    "unclear": "Unclear",
+    "contradicted": "Contradicted by the source",
 }
 
 _VERDICT_ALIASES: dict[str, str] = {
@@ -146,8 +146,8 @@ class Claim:
     note: str = ""
 
     @property
-    def verdict_fa(self) -> str:
-        return VERDICT_FA.get(self.verdict, VERDICT_FA["unclear"])
+    def verdict_label(self) -> str:
+        return VERDICT_LABEL.get(self.verdict, VERDICT_LABEL["unclear"])
 
 
 @dataclass
@@ -183,7 +183,7 @@ def parse_analysis(text: str) -> ChatAnalysis:
     """Parse a NotebookLM reply: JSON (preferred) or a cards-only paste."""
     text = (text or "").strip()
     if not text:
-        return ChatAnalysis(raw_error="هیچ متنی وارد نشده.")
+        return ChatAnalysis(raw_error="Nothing was pasted.")
 
     result = _try_json(text)
     if result is not None:
@@ -197,15 +197,15 @@ def parse_analysis(text: str) -> ChatAnalysis:
         return ChatAnalysis(
             topic=cards.topic,
             where=cards.where,
-            summary="فقط کارت از جواب استخراج شد.",
+            summary="Cards only were extracted from the reply.",
             cards=list(cards.cards),
         )
 
     return ChatAnalysis(
         raw_error=(
-            "فرمت پیست شده قابل تشخیص نیست.\n\n"
-            "انتظار JSON با فیلدهای topic / claims / gaps / cards "
-            "یا همان فرمت کارت (JSON / جدول / Q: A:)."
+            "Could not recognise that paste.\n\n"
+            "Expected JSON with topic / claims / gaps / cards, "
+            "or a card paste (JSON / table / Q: A:)."
         )
     )
 
@@ -379,7 +379,7 @@ def save_analysis(store: Store, parsed: ChatAnalysis) -> dict:
             "error": parsed.raw_error,
         }
 
-    topic = parsed.topic or "تحلیل چت"
+    topic = parsed.topic or "Chat analysis"
     source_title = f"NotebookLM — chat — {topic}"
     source = store.find_source_by_title(source_title)
     if not source:
@@ -393,7 +393,7 @@ def save_analysis(store: Store, parsed: ChatAnalysis) -> dict:
     n_gaps = len(parsed.gaps)
     n_claims = len(parsed.claims)
     statement = parsed.summary or (
-        f"تحلیل چت: {n_gaps} ضعف، {n_claims} ادعا، {len(parsed.cards)} کارت"
+        f"Chat analysis: {n_gaps} gaps, {n_claims} claims, {len(parsed.cards)} cards"
     )
     ku = KnowledgeUnit(
         topic=topic,
@@ -458,21 +458,21 @@ def list_open_gaps(store: Store, limit: int = 5) -> list[WeakSpot]:
         if diagnosis.engine != "notebooklm_chat":
             continue
         ku = store.get_ku(diagnosis.ku_id)
-        label = ku.label if ku else "ضعف از چت"
+        label = ku.label if ku else "Gap from chat"
         where_parts: list[str] = []
         if ku:
             source_title = titles.get(ku.source_id, "")
             for part in (source_title, ku.chapter, ku.section, ku.location):
                 if part:
                     where_parts.append(part)
-        persian = _ERROR_PERSIAN.get(diagnosis.error_type, "از تحلیل چت پیدا شد")
-        why = diagnosis.evidence or persian
+        plain = _ERROR_PLAIN.get(diagnosis.error_type, "Found in chat analysis")
+        why = diagnosis.evidence or plain
         spots.append(
             WeakSpot(
                 label=label,
                 summary=why,
-                source_hint=" · ".join(where_parts) if where_parts else "منبع ثبت نشده",
-                time_estimate="حدود ۵ دقیقه",
+                source_hint=" · ".join(where_parts) if where_parts else "No source recorded",
+                time_estimate="about 5 min",
                 ku_id=diagnosis.ku_id,
                 error_types=[diagnosis.error_type],
                 origin="chat",

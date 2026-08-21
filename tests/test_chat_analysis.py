@@ -21,18 +21,18 @@ from secondbrain.store import Store
 
 SAMPLE_JSON = """
 {
-  "topic": "SGLT2 in CKD",
-  "where": "ADA 2026 ch 11 p.42",
-  "summary": "The chat mixed up the eGFR initiation cut-off.",
+  "topic": "Unit A",
+  "where": "ch 11 p.42",
+  "summary": "The chat mixed up the initiation cut-off.",
   "claims": [
-    {"text": "Start SGLT2 at eGFR 15", "verdict": "contradicted", "where": "Table 11.2", "note": "cut-off is 20"},
+    {"text": "Start at 15", "verdict": "contradicted", "where": "Table 11.2", "note": "cut-off is 20"},
     {"text": "Hold if volume depleted", "verdict": "supported", "where": "p.43"}
   ],
   "gaps": [
-    {"label": "eGFR initiation threshold", "why": "used 15 instead of 20", "where": "Table 11.2", "kind": "number"}
+    {"label": "initiation threshold", "why": "used 15 instead of 20", "where": "Table 11.2", "kind": "number"}
   ],
   "cards": [
-    {"q": "eGFR cut-off to start SGLT2?", "a": "20 mL/min/1.73m2", "kind": "number"}
+    {"q": "What is the cut-off?", "a": "20", "kind": "number"}
   ]
 }
 """
@@ -40,10 +40,10 @@ SAMPLE_JSON = """
 
 class PromptTests(unittest.TestCase):
     def test_prompt_contains_chat_and_rules(self):
-        prompt = analysis_prompt("User: start at 15?\nNotebookLM: check the table", focus='CKD "cut-off"')
+        prompt = analysis_prompt("User: start at 15?\nNotebookLM: check the table", focus='focus "cut-off"')
         self.assertIn("ONLY the sources", prompt)
         self.assertIn("start at 15", prompt)
-        self.assertIn("CKD 'cut-off'", prompt)
+        self.assertIn("focus 'cut-off'", prompt)
         self.assertIn("supported|unsupported|unclear|contradicted", prompt)
 
     def test_clip_chat(self):
@@ -65,17 +65,17 @@ class ParseTests(unittest.TestCase):
     def test_empty(self):
         parsed = parse_analysis("")
         self.assertFalse(parsed.ok)
-        self.assertIn("متنی", parsed.raw_error)
+        self.assertIn("Nothing was pasted", parsed.raw_error)
 
     def test_full_json(self):
         parsed = parse_analysis(SAMPLE_JSON)
         self.assertTrue(parsed.ok)
-        self.assertEqual(parsed.topic, "SGLT2 in CKD")
+        self.assertEqual(parsed.topic, "Unit A")
         self.assertEqual(len(parsed.claims), 2)
         self.assertEqual(parsed.claims[0].verdict, "contradicted")
-        self.assertEqual(parsed.claims[0].verdict_fa, "منبع خلافشه")
+        self.assertEqual(parsed.claims[0].verdict_label, "Contradicted by the source")
         self.assertEqual(parsed.gaps[0].kind, "number")
-        self.assertEqual(parsed.cards[0]["a"], "20 mL/min/1.73m2")
+        self.assertEqual(parsed.cards[0]["a"], "20")
 
     def test_fenced_and_prose(self):
         raw = "Sure.\n```json\n" + SAMPLE_JSON + "\n```\nHope this helps."
@@ -162,9 +162,9 @@ class LayoutTests(unittest.TestCase):
 
     def test_app_has_three_sections(self):
         src = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
-        self.assertIn("کارت‌سازی", src)
-        self.assertIn("ضعف‌ها", src)
-        self.assertIn("تحلیل چت", src)
+        self.assertIn("Cards", src)
+        self.assertIn("Weaknesses", src)
+        self.assertIn("Chat analysis", src)
         self.assertIn("chat_analysis", src)
         self.assertIn("advanced/", src)
 

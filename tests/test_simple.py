@@ -20,9 +20,9 @@ from secondbrain.store import Store
 
 class StudyPromptTests(unittest.TestCase):
     def test_includes_topic_and_forbids_outside_knowledge(self):
-        prompt = study_prompt('CKD "SGLT2"')
-        self.assertIn("CKD 'SGLT2'", prompt)
-        self.assertNotIn('"', study_prompt('CKD "SGLT2"').split("Topic:", 1)[1].split("\n", 1)[0])
+        prompt = study_prompt('Topic "One"')
+        self.assertIn("Topic 'One'", prompt)
+        self.assertNotIn('"', study_prompt('Topic "One"').split("Topic:", 1)[1].split("\n", 1)[0])
         self.assertIn("ONLY the sources", prompt)
         self.assertIn("JSON", prompt)
         self.assertLessEqual(prompt.count("\n"), 15)
@@ -32,13 +32,13 @@ class ParseReplyTests(unittest.TestCase):
     def test_empty(self):
         parsed = parse_reply("  ")
         self.assertFalse(parsed.ok)
-        self.assertIn("متنی", parsed.raw_error)
+        self.assertIn("Nothing was pasted", parsed.raw_error)
 
     def test_json(self):
-        raw = '{"topic":"CKD","where":"ch 11","cards":[{"q":"eGFR cut-off?","a":"<20","kind":"number"}]}'
+        raw = '{"topic":"Topic","where":"ch 11","cards":[{"q":"cut-off?","a":"<20","kind":"number"}]}'
         parsed = parse_reply(raw)
         self.assertTrue(parsed.ok)
-        self.assertEqual(parsed.topic, "CKD")
+        self.assertEqual(parsed.topic, "Topic")
         self.assertEqual(parsed.where, "ch 11")
         self.assertEqual(parsed.cards[0]["kind"], "number")
         self.assertEqual(KIND_TO_ERROR["number"], "THRESHOLD_ERROR")
@@ -50,7 +50,7 @@ class ParseReplyTests(unittest.TestCase):
         self.assertEqual(parsed.cards[0]["q"], "Q1")
 
     def test_markdown_table(self):
-        raw = "| سوال | جواب |\n|---|---|\n| What is X? | Y |\n| Z? | W |"
+        raw = "| Question | Answer |\n|---|---|\n| What is X? | Y |\n| Z? | W |"
         parsed = parse_reply(raw)
         self.assertTrue(parsed.ok)
         self.assertEqual(len(parsed.cards), 2)
@@ -88,9 +88,9 @@ class SaveAndWeakTests(unittest.TestCase):
         self.assertEqual(weak_spots(self.store), [])
 
     def test_weak_spots_from_failures(self):
-        src = Source(title="ADA")
+        src = Source(title="Source")
         self.store.upsert_source(src)
-        ku = KnowledgeUnit(topic="SGLT2", statement="thresholds", source_id=src.id, chapter="11")
+        ku = KnowledgeUnit(topic="Unit", statement="thresholds", source_id=src.id, chapter="11")
         self.store.upsert_ku(ku)
         card = Card(ku_id=ku.id, question="cut-off?", answer="20", error_target="THRESHOLD_ERROR")
         self.store.upsert_card(card)
@@ -107,15 +107,15 @@ class SaveAndWeakTests(unittest.TestCase):
             )
         spots = weak_spots(self.store, limit=3)
         self.assertTrue(spots)
-        self.assertIn("غلط", spots[0].summary)
+        self.assertIn("wrong", spots[0].summary)
         self.assertEqual(spots[0].origin, "anki")
         self.assertIn("11", spots[0].source_hint)
 
     def test_restudy_prompt(self):
-        prompt = restudy_prompt("SGLT2", where="ch 11", error_types=["THRESHOLD_ERROR"])
-        self.assertIn("SGLT2", prompt)
+        prompt = restudy_prompt("Unit", where="ch 11", error_types=["THRESHOLD_ERROR"])
+        self.assertIn("Unit", prompt)
         self.assertIn("ONLY the sources", prompt)
-        self.assertIn("عددها", prompt)
+        self.assertIn("numbers keep slipping", prompt)
 
 
 if __name__ == "__main__":
