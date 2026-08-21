@@ -35,7 +35,8 @@ it in a private repo.
 2. Create a token: [github.com/settings/personal-access-tokens](https://github.com/settings/personal-access-tokens)
    → *Fine-grained* → *Only select repositories* → `second-brain-data` →
    **Repository permissions ▸ Contents ▸ Read and write**.
-3. In the hub: **⚙️ Connections** → paste the token and `yourname/second-brain-data` → **Save**.
+3. Put the token and `yourname/second-brain-data` in **App settings ▸ Secrets** (or run
+   `advanced/8_⚙️_Connections.py` locally and press **Save**).
 
 From then on every Sync uploads the database, and a restarted host restores it automatically.
 

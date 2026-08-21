@@ -10,11 +10,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
 
-from .diagnostics import UnitProfile, WeaknessProfile, build_profile
-from .models import Card, KnowledgeUnit, new_id, now_iso
+from .diagnostics import build_profile
+from .models import Card, KnowledgeUnit
 from .store import Store
 
 # ---------------------------------------------------------------------------
@@ -47,6 +45,7 @@ def study_prompt(topic: str) -> str:
     NotebookLM will only use sources already loaded in that notebook —
     no outside facts allowed.
     """
+    topic = (topic or "").replace('"', "'").strip()
     return f"""You are a medical flashcard generator. Use ONLY the sources in this notebook — no outside knowledge.
 Topic: {topic}
 Make exactly 10 flashcards. Output ONLY valid JSON:
@@ -187,7 +186,11 @@ def _try_qa(text: str) -> ParsedCards | None:
 # save_cards  —  persist one paste as a KnowledgeUnit + its cards
 # ---------------------------------------------------------------------------
 
-def save_cards(store: Store, parsed: ParsedCards) -> dict:
+def save_cards(
+    store: Store,
+    parsed: ParsedCards,
+    extra_tags: list[str] | None = None,
+) -> dict:
     """One paste = one KnowledgeUnit + N cards.
 
     Returns a summary dict: {"ku_id": ..., "cards_saved": ...}
@@ -226,7 +229,7 @@ def save_cards(store: Store, parsed: ParsedCards) -> dict:
             answer=c["a"],
             card_type="BASIC",
             error_target=error_target,
-            tags=[f"simple::{kind}", "notebooklm"],
+            tags=[f"simple::{kind}", "notebooklm", *(extra_tags or [])],
         )
         store.upsert_card(card)
         saved += 1
@@ -247,6 +250,7 @@ class WeakSpot:
     time_estimate: str  # e.g. "حدود ۵ دقیقه"
     ku_id: str = ""     # internal id for the restudy prompt
     error_types: list[str] = None  # type: ignore[assignment]
+    origin: str = "anki"  # anki | chat
 
     def __post_init__(self) -> None:
         if self.error_types is None:

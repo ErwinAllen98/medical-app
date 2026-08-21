@@ -65,6 +65,8 @@ NOTION .................... mastered knowledge + the weakness history behind it
 | 11 Mastery | `secondbrain/mastery.py` | Six explicit criteria; nothing is "mastered" on one correct answer |
 | 12 Archive | `secondbrain/notion.py` | Notion pages incl. *my historical weakness* and *how it was resolved*; Markdown fallback |
 | Orchestration | `secondbrain/pipeline.py`, `secondbrain/cli.py` | One-call cycle, cron-friendly CLI, demo seed |
+| Simple UI | `secondbrain/simple.py` | Phone-first prompts, three paste formats, plain-language weak spots |
+| Chat analysis | `secondbrain/chat_analysis.py` | Paste a chat → NotebookLM checks claims against your sources, lists gaps, writes cards |
 
 ### The error taxonomy (`secondbrain/taxonomy.py`)
 
@@ -127,14 +129,15 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Open the hub, press **“Load demo collection”** on the home page to watch the whole loop run on a
-seeded 60-day FSRS history, then start replacing it with your own sources.
+Open the hub. Three sections sit on one page: **کارت‌سازی**, **ضعف‌ها**, **تحلیل چت**.
+To watch the full loop on a seeded 60-day FSRS history: `python -m secondbrain.cli seed-demo`.
 
 ### Connections (all optional)
 
-Open the **⚙️ Connections** page in the app, paste the keys, press *Save* and then *Test everything*.
-The page writes `.streamlit/secrets.toml` (chmod 600, git-ignored) — no key ever needs to be typed
-into a chat.
+On Streamlit Cloud put keys in **App settings ▸ Secrets**. Locally, copy
+`.streamlit/secrets.toml.example` → `.streamlit/secrets.toml`, or run
+`advanced/8_⚙️_Connections.py`, paste the keys, press *Save* and then *Test everything*.
+The file is chmod 600 and git-ignored — no key ever needs to be typed into a chat.
 
 | Service | API? | Used for |
 |---|---|---|
@@ -210,18 +213,19 @@ python -m secondbrain.cli notion           # archive mastered units
 
 ---
 
-## Pages
+## The one-page hub
 
-| Page | Role |
+`streamlit run app.py` opens **one page** with three sections (no jargon, phone-first).
+The old multi-page UI lives in `advanced/` so Streamlit does **not** auto-load it.
+
+| Section | Role |
 |---|---|
-| 🧠 Home | Loop status, cross-card patterns, today's priorities, one-button cycle |
-| 📚 Sources | Register sources, run the grounded extraction, review what was rejected |
-| 🔄 Sync | AnkiWeb sync · AnkiDroid file bridge · AnkiConnect · CSV |
-| 📈 Performance | Daily load, lapse rate, per-unit stability, local FSRS state |
-| 🔍 Diagnosis | Cumulative Weakness Profile + Claude's diagnostic engine + the taxonomy |
-| 💊 Prescription | The six-part prescription + the NotebookLM prompt that sends the loop back to the source |
-| 🔁 Adaptive Questions | New formulations at the weakest cognitive layer |
-| 🏆 Mastery & Notion | Six-criterion mastery check and the Notion archive |
+| 🃏 کارت‌سازی | Topic → copy a short NotebookLM prompt → paste JSON / table / Q:A: → cards go to Anki |
+| 🎯 ضعف‌ها | Pull Anki answers, show the top lapses in plain Persian, plus gaps found by chat analysis |
+| 💬 تحلیل چت با NotebookLM | Paste a NotebookLM / Telegram / case chat → copy the analysis prompt → paste the JSON back → claims, gaps, cards |
+
+Advanced pages (still there, run individually if you need them):
+`advanced/1_📚_Sources.py` … `advanced/8_⚙️_Connections.py`.
 
 Data lives in `data/second_brain.db` (SQLite, git-ignored). Exports land in `data/exports/`.
 
@@ -231,6 +235,9 @@ Data lives in `data/second_brain.db` (SQLite, git-ignored). Exports land in `dat
 
 این مخزن یک **مغز دوم پزشکی** است: یک حلقه‌ی بسته که مشخص می‌کند **چه چیزی را نمی‌دانی، چرا
 نمی‌دانی، کجای منبع باید بازخوانی شود و از کجا بفهمیم واقعاً مسلط شده‌ای.**
+
+هاب **یک صفحه** است با سه بخش: **کارت‌سازی**، **ضعف‌ها**، **تحلیل چت با NotebookLM**.
+صفحات قدیمی به پوشهٔ `advanced/` منتقل شده‌اند تا Streamlit آن‌ها را خودکار نشان ندهد.
 
 - منابع معتبر در **NotebookLM** بارگذاری می‌شوند؛ استخراج فقط از همان منابع انجام می‌شود و هر
   واحد دانشی که فصل/بخش/صفحه نداشته باشد **رد می‌شود**.
