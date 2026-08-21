@@ -10,11 +10,9 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
 
-from .diagnostics import UnitProfile, WeaknessProfile, build_profile
-from .models import Card, KnowledgeUnit, new_id, now_iso
+from .diagnostics import build_profile
+from .models import Card, KnowledgeUnit
 from .store import Store
 
 # ---------------------------------------------------------------------------
@@ -28,13 +26,12 @@ KIND_TO_ERROR: dict[str, str] = {
     "exception": "EXCEPTION_ERROR",
 }
 
-# Human-readable Persian labels for each kind
 KIND_LABELS: dict[str, str] = {
-    "fact": "حقیقت",
-    "number": "عدد",
-    "difference": "تفاوت",
-    "decision": "تصمیم",
-    "exception": "استثنا",
+    "fact": "Fact",
+    "number": "Number",
+    "difference": "Difference",
+    "decision": "Decision",
+    "exception": "Exception",
 }
 
 # ---------------------------------------------------------------------------
@@ -47,6 +44,7 @@ def study_prompt(topic: str) -> str:
     NotebookLM will only use sources already loaded in that notebook —
     no outside facts allowed.
     """
+    topic = (topic or "").replace('"', "'").strip()
     return f"""You are a medical flashcard generator. Use ONLY the sources in this notebook — no outside knowledge.
 Topic: {topic}
 Make exactly 10 flashcards. Output ONLY valid JSON:
@@ -82,14 +80,14 @@ def parse_reply(text: str) -> ParsedCards:
     """
     text = text.strip()
     if not text:
-        return ParsedCards(raw_error="هیچ متنی وارد نشده.")
+        return ParsedCards(raw_error="Nothing was pasted.")
 
     # --- 1. JSON -----------------------------------------------------------
     result = _try_json(text)
     if result is not None:
         return result
 
-    # --- 2. Markdown table  | سوال | جواب |  -----------------------------
+    # --- 2. Markdown table  | Question | Answer |  -----------------------
     result = _try_table(text)
     if result is not None:
         return result
@@ -99,7 +97,15 @@ def parse_reply(text: str) -> ParsedCards:
     if result is not None:
         return result
 
-    return ParsedCards(raw_error="فرمت پیست شده قابل تشخیص نیست.\n\nسه فرمت پذیرفته:\n1) JSON\n2) جدول مارک‌داون: | سوال | جواب |\n3) خطوط Q: و A:")
+    return ParsedCards(
+        raw_error=(
+            "Could not recognise that paste.\n\n"
+            "Accepted formats:\n"
+            "1) JSON\n"
+            "2) Markdown table: | Question | Answer |\n"
+            "3) Q: / A: lines"
+        )
+    )
 
 
 def _try_json(text: str) -> ParsedCards | None:
@@ -144,7 +150,7 @@ def _try_json(text: str) -> ParsedCards | None:
 
 
 def _try_table(text: str) -> ParsedCards | None:
-    """Parse a markdown table: | سوال | جواب | or | Q | A |."""
+    """Parse a markdown table: | Question | Answer | or | Q | A |."""
     lines = [l.strip() for l in text.splitlines() if l.strip().startswith("|")]
     if len(lines) < 2:
         return None
@@ -187,7 +193,11 @@ def _try_qa(text: str) -> ParsedCards | None:
 # save_cards  —  persist one paste as a KnowledgeUnit + its cards
 # ---------------------------------------------------------------------------
 
-def save_cards(store: Store, parsed: ParsedCards) -> dict:
+def save_cards(
+    store: Store,
+    parsed: ParsedCards,
+    extra_tags: list[str] | None = None,
+) -> dict:
     """One paste = one KnowledgeUnit + N cards.
 
     Returns a summary dict: {"ku_id": ..., "cards_saved": ...}
@@ -195,7 +205,7 @@ def save_cards(store: Store, parsed: ParsedCards) -> dict:
     if not parsed.ok:
         return {"ku_id": "", "cards_saved": 0, "error": parsed.raw_error}
 
-    topic = parsed.topic or "نامشخص"
+    topic = parsed.topic or "Untitled"
 
     # Ensure a source exists (FK constraint requires it)
     source_title = f"NotebookLM — {topic}"
@@ -208,7 +218,7 @@ def save_cards(store: Store, parsed: ParsedCards) -> dict:
     ku = KnowledgeUnit(
         topic=topic,
         subtopic="",
-        statement=f"{len(parsed.cards)} کارت از {topic}",
+        statement=f"{len(parsed.cards)} cards from {topic}",
         source_id=source.id,
         chapter=parsed.where or "",
         section="",
@@ -226,7 +236,7 @@ def save_cards(store: Store, parsed: ParsedCards) -> dict:
             answer=c["a"],
             card_type="BASIC",
             error_target=error_target,
-            tags=[f"simple::{kind}", "notebooklm"],
+            tags=[f"simple::{kind}", "notebooklm", *(extra_tags or [])],
         )
         store.upsert_card(card)
         saved += 1
@@ -242,34 +252,35 @@ def save_cards(store: Store, parsed: ParsedCards) -> dict:
 @dataclass
 class WeakSpot:
     label: str          # topic label in simple language
-    summary: str        # e.g. "۱۰ بار از ۱۹ بار غلط — عددها از دستت در می‌رن"
-    source_hint: str    # where to read, e.g. "[منبع·بخش]"
-    time_estimate: str  # e.g. "حدود ۵ دقیقه"
+    summary: str
+    source_hint: str
+    time_estimate: str
     ku_id: str = ""     # internal id for the restudy prompt
     error_types: list[str] = None  # type: ignore[assignment]
+    origin: str = "anki"  # anki | chat
 
     def __post_init__(self) -> None:
         if self.error_types is None:
             self.error_types = []
 
 
-# Persian labels for internal error types
-_ERROR_PERSIAN: dict[str, str] = {
-    "FACTUAL_ERROR": "حقیقت‌ها یادت نمی‌مونن",
-    "THRESHOLD_ERROR": "عددها از دستت در می‌رن",
-    "DISCRIMINATION_ERROR": "دوتا چیز شبیه‌ هم رو قاطی می‌کنی",
-    "MANAGEMENT_ERROR": "تصمیم‌گیری‌ها مشکل داره",
-    "EXCEPTION_ERROR": "استثناها رو فراموش می‌کنی",
-    "CONCEPT_ERROR": "مکانیزمش رو نفهمیدی",
-    "SEQUENCE_ERROR": "ترتیب قدم‌ها رو بلد نیستی",
-    "INDICATION_ERROR": "کی باید استفاده کنی رو نمی‌دونی",
-    "CONTRAINDICATION_ERROR": "منع مصرف‌ها رو بلد نیستی",
-    "MONITORING_ERROR": "پیگیری و پایش مشکل داره",
+_ERROR_PLAIN: dict[str, str] = {
+    "FACTUAL_ERROR": "the facts are not sticking",
+    "THRESHOLD_ERROR": "the numbers keep slipping",
+    "DISCRIMINATION_ERROR": "similar things are getting mixed up",
+    "MANAGEMENT_ERROR": "the decisions are shaky",
+    "EXCEPTION_ERROR": "the exceptions are being missed",
+    "CONCEPT_ERROR": "the mechanism is not understood",
+    "SEQUENCE_ERROR": "the order of steps is wrong",
+    "INDICATION_ERROR": "when to use it is unclear",
+    "CONTRAINDICATION_ERROR": "when not to use it is unclear",
+    "MONITORING_ERROR": "follow-up and monitoring is unclear",
 }
+_ERROR_PERSIAN = _ERROR_PLAIN  # backward-compatible alias
 
 
 def weak_spots(store: Store, limit: int = 3) -> list[WeakSpot]:
-    """Return the top weak spots in plain Persian.
+    """Return the top weak spots in plain English.
 
     Uses diagnostics.build_profile under the hood, but the output
     contains zero jargon — just what's wrong, where to read, and how long.
@@ -284,9 +295,9 @@ def weak_spots(store: Store, limit: int = 3) -> list[WeakSpot]:
         failures = unit.failures
         attempts = unit.attempts
         top_error = unit.top_error or "FACTUAL_ERROR"
-        persian_error = _ERROR_PERSIAN.get(top_error, "مشکل داری")
+        plain_error = _ERROR_PLAIN.get(top_error, "this is weak")
 
-        summary = f"{failures} بار از {attempts} بار غلط — {persian_error}"
+        summary = f"{failures} of {attempts} wrong — {plain_error}"
 
         # --- source hint ---
         ku = store.get_ku(unit.ku_id)
@@ -296,12 +307,12 @@ def weak_spots(store: Store, limit: int = 3) -> list[WeakSpot]:
             for part in (source_title, ku.chapter, ku.section, ku.location):
                 if part:
                     source_parts.append(part)
-        source_hint = " · ".join(source_parts) if source_parts else "منبع ثبت نشده"
+        source_hint = " · ".join(source_parts) if source_parts else "No source recorded"
 
         # --- time estimate (very rough) ---
         # Assume ~5 min per weak unit, more if multiple error types
         minutes = max(5, 5 * len(unit.error_hypotheses))
-        time_estimate = f"حدود {minutes} دقیقه"
+        time_estimate = f"about {minutes} min"
 
         spots.append(WeakSpot(
             label=unit.label,
@@ -332,8 +343,8 @@ def restudy_prompt(
     """
     error_desc = ""
     if error_types:
-        parts = [_ERROR_PERSIAN.get(e, e) for e in error_types[:2]]
-        error_desc = "مشکل: " + " و ".join(parts)
+        parts = [_ERROR_PLAIN.get(e, e) for e in error_types[:2]]
+        error_desc = "Problem: " + " and ".join(parts)
 
     where_line = f"\nWhere: {where}" if where else ""
 

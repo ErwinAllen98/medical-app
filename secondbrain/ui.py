@@ -102,10 +102,7 @@ def sidebar() -> None:
         st.write("🔵 NotebookLM — no API (copy/paste)")
         st.write(_dot(bool(settings.ankiweb_username and settings.ankiweb_password)) + " AnkiWeb sync")
         st.caption("Missing keys are fine — every step has a manual copy-paste bridge.")
-        try:
-            st.page_link("pages/8_⚙️_Connections.py", label="Set up connections", icon="⚙️")
-        except Exception:
-            pass
+        st.caption("Keys: Streamlit Secrets or `.streamlit/secrets.toml`. Advanced pages: `advanced/`.")
 
         st.divider()
         st.caption("Dr Erfan Alinejad Ghadi · Iran Medical Council No. 219890")
